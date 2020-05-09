@@ -2,17 +2,10 @@ library(RCurl); library(xml2); library(rvest); library(jsonlite); library(foreac
 library(lubridate)
 library(tidyverse)
 source("EH_scrape_functions.R")
-
+path_to_working_directory <- "Documents/Workspaces/r_wd/hockey_stuff/"
 files_to_create <- c("game_info_df", "pbp_base", "pbp_extras",
                      "player_shifts", "player_periods", "roster_df",
                      "scratches_df", "events_summary_df", "report")
-
-for(file in paste("data/", files_to_create, ".csv", sep="")){
-  if(!file.exists(file)){
-    file.create(file)
-  }
-}
-
 
 # TODO: scrape from game 483 and onwards
 # for (i in 2:1271){
@@ -26,15 +19,15 @@ for(file in paste("data/", files_to_create, ".csv", sep="")){
 # }
 
 # Loading data
-events_summary <- read_csv("data/events_summary_df.csv")
-game_info <- read_csv("data/game_info_df.csv")
-pbp_base <- read_csv("data/pbp_base.csv")
-pbp_extras <- read_csv("data/pbp_extras.csv")
-player_periods <- read_csv("data/player_periods.csv")
-player_shifts <- read_csv("data/player_shifts.csv")
-report <- read_csv("data/report.csv")
-roster <- read_csv("data/roster_df.csv")
-scratches <- read_csv("data/scratches_df.csv")
+events_summary <- read_csv(paste(path_to_working_directory, "data/events_summary_df.csv", sep=""))
+game_info <- read_csv(paste(path_to_working_directory, "data/game_info_df.csv", sep=""))
+pbp_base <- read_csv(paste(path_to_working_directory, "data/pbp_base.csv", sep=""))
+pbp_extras <- read_csv(paste(path_to_working_directory, "data/pbp_extras.csv", sep=""))
+player_periods <- read_csv(paste(path_to_working_directory, "data/player_periods.csv", sep=""))
+player_shifts <- read_csv(paste(path_to_working_directory, "data/player_shifts.csv", sep=""))
+report <- read_csv(paste(path_to_working_directory, "data/report.csv", sep=""))
+roster <- read_csv(paste(path_to_working_directory, "data/roster_df.csv", sep=""))
+scratches <- read_csv(paste(path_to_working_directory, "data/scratches_df.csv", sep=""))
 
 # ===== Looking at where penalties occur on the ice =====
 # penalty_positions <- pbp_base %>% filter(event_type == "PENL") %>% 
@@ -44,11 +37,24 @@ scratches <- read_csv("data/scratches_df.csv")
 #                               
 # ggplot(penalty_positions %>% filter(penalty_type == "Interference("), aes(x=coords_y, y=coords_x, col=penalty_type)) + geom_point()
 
-g <- 2018020001
-test <- pbp_base %>% filter(game_id == g)
-shots <- test %>% filter(event_type == "SHOT")
 
-ggplot(shots, aes(x=coords_y, y=coords_x, col=event_team)) + geom_point()
+# Modeling Pr(home team winning), all stats are from the point of view of the home team
+ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == home_team) %>% 
+                              summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
+                              ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
+                              cbind(game_info$game_id, .) %>% as_tibble()
+
+ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == away_team) %>% 
+                                    summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
+                                    ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
+                                    cbind(game_info$game_id, .) %>% as_tibble()
+
+# pp_shots_for_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
+#                                summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
+#                               ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
+#                               cbind(game_info$game_id, .) %>% as_tibble()
+
+# ggplot(shots_for, aes(x=coords_y, y=coords_x, col=event_team)) + geom_point()
 # load(file = "test_2018_2019_season.rds")
 # all_game_ids <- test_2018_2019_season$game_info_df %>% select(game_id) %>% "[["(1) %>% as.numeric()
 # 
