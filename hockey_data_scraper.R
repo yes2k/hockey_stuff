@@ -13,24 +13,42 @@ for(file in paste("data/", files_to_create, ".csv", sep="")){
   }
 }
 
-game_id <- 2018020001
-game_data <- sc.scrape_pbp(as.character(game_id))
 
-for(file in files_to_create){
- write.table(game_data[[file]], paste("data/", file, ".csv", sep=""), sep=",", 
-             col.names = TRUE, append=TRUE, row.names=FALSE)
-}
+# TODO: scrape from game 483 and onwards
+# for (i in 2:1271){
+#   print(i)
+#   game_id <- paste("201802", sprintf("%04d", i), sep="")
+#   game_data <- sc.scrape_pbp(game_id)
+#   for(file in files_to_create){
+#     write.table(game_data[[file]], paste("data/", file, ".csv", sep=""), sep=",", 
+#               col.names=!file.exists(paste("data/", file, ".csv", sep="")), append=TRUE, row.names=FALSE)
+#   }
+# }
 
-for (i in 2:1271){
-  print(i)
-  game_id <- paste("201802", sprintf("%04d", i), sep="")
-  game_data <- sc.scrape_pbp(game_id)
-  for(file in files_to_create){
-    write.table(game_data[[file]], paste("data/", file, ".csv", sep=""), sep=",", 
-              col.names=!file.exists(paste("data/", file, ".csv", sep="")), append=TRUE, row.names=FALSE)
-  }
-}
+# Loading data
+events_summary <- read_csv("data/events_summary_df.csv")
+game_info <- read_csv("data/game_info_df.csv")
+pbp_base <- read_csv("data/pbp_base.csv")
+pbp_extras <- read_csv("data/pbp_extras.csv")
+player_periods <- read_csv("data/player_periods.csv")
+player_shifts <- read_csv("data/player_shifts.csv")
+report <- read_csv("data/report.csv")
+roster <- read_csv("data/roster_df.csv")
+scratches <- read_csv("data/scratches_df.csv")
 
+# ===== Looking at where penalties occur on the ice =====
+# penalty_positions <- pbp_base %>% filter(event_type == "PENL") %>% 
+#                 select(coords_x, coords_y, event_detail, event_description) %>%
+#                 extract(col=event_description, regex="([A-Z]+[a-z]+\\(|TEAM.*\\()", into="penalty_type")
+#                 # extract(col = event_description, regex = "([A-Z]*.*\\()", into="penalty_type")
+#                               
+# ggplot(penalty_positions %>% filter(penalty_type == "Interference("), aes(x=coords_y, y=coords_x, col=penalty_type)) + geom_point()
+
+g <- 2018020001
+test <- pbp_base %>% filter(game_id == g)
+shots <- test %>% filter(event_type == "SHOT")
+
+ggplot(shots, aes(x=coords_y, y=coords_x, col=event_team)) + geom_point()
 # load(file = "test_2018_2019_season.rds")
 # all_game_ids <- test_2018_2019_season$game_info_df %>% select(game_id) %>% "[["(1) %>% as.numeric()
 # 
