@@ -49,6 +49,11 @@ ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_typ
                                     ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
                                     cbind(game_info$game_id, .) %>% as_tibble()
 
+powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & event_team == away_team) %>% 
+                      extract(col=event_detail, regex="(^[0-9][0-9]?)", into="penalty_length") %>% 
+                      mutate(penalty_length = as.numeric(penalty_length)) %>% 
+                      summarise(penalty_time = sum(penalty_length))
+
 # pp_shots_for_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
 #                                summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
 #                               ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
