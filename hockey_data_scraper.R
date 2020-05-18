@@ -37,6 +37,7 @@ scratches <- read_csv(paste(path_to_working_directory, "data/scratches_df.csv", 
 #                               
 # ggplot(penalty_positions %>% filter(penalty_type == "Interference("), aes(x=coords_y, y=coords_x, col=penalty_type)) + geom_point()
 
+all_game_ids <- game_info$game_id
 
 # Modeling Pr(home team winning), all stats are from the point of view of the home team
 ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == home_team) %>% 
@@ -53,6 +54,16 @@ powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL"
                       extract(col=event_detail, regex="(^[0-9][0-9]?)", into="penalty_length") %>% 
                       mutate(penalty_length = as.numeric(penalty_length)) %>% 
                       summarise(penalty_time = sum(penalty_length))
+
+for(row in 1:nrow(powerplay_time)){
+  print(powerplay_time[row])
+}
+
+powerplay_shots_for_per_60 <- (pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
+                                  summarise(powerplay_shots_for=n()))
+
+#Look at game 2018020018 
+# TODO: Games missing in powerplay_shots_for_per_60 where no shots are taken, need to add those seperately
 
 # pp_shots_for_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
 #                                summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
@@ -187,4 +198,3 @@ powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL"
 # df <- data.frame(data)
 # names(df) <-name
 # 
-
