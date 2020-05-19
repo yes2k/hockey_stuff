@@ -1,7 +1,8 @@
 library(RCurl); library(xml2); library(rvest); library(jsonlite); library(foreach)
 library(lubridate)
 library(tidyverse)
-source("EH_scrape_functions.R")
+library(googledrive)
+# source("EH_scrape_functions.R")
 files_to_create <- c("game_info_df", "pbp_base", "pbp_extras",
                      "player_shifts", "player_periods", "roster_df",
                      "scratches_df", "events_summary_df", "report")
@@ -74,15 +75,20 @@ powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL"
                       mutate(penalty_length = as.numeric(penalty_length)) %>% 
                       summarise(penalty_time = sum(penalty_length))
 
-for(row in 1:nrow(powerplay_time)){
-  print(powerplay_time[row])
+powerplay_shots_for <- (pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>%
+                                 summarise(powerplay_shots_for=n()))
+
+# Adding in missing games that have 0 shots or 0 minutes of powerplay time
+for(g in all_game_ids){
+  if(!(g %in% powerplay_time$game_id)){
+    print(g)
+    powerplay_time <- powerplay_time %>% add_row(game_id=g, penalty_time=0)
+  }
+  if(!(g %in% powerplay_shots_for$game_id)){
+    print(g)
+    powerplay_shots_for <- powerplay_shots_for %>% add_row(game_id=g, powerplay_shots_for=0)
+  }
 }
-
-powerplay_shots_for_per_60 <- (pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
-                                  summarise(powerplay_shots_for=n()))
-
-#Look at game 2018020018 
-# TODO: Games missing in powerplay_shots_for_per_60 where no shots are taken, need to add those seperately
 
 # pp_shots_for_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
 #                                summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
