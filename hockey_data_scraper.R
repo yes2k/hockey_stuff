@@ -89,7 +89,12 @@ for(g in all_game_ids){
     powerplay_shots_for <- powerplay_shots_for %>% add_row(game_id=g, powerplay_shots_for=0)
   }
 }
+powerplay_shots_for <- powerplay_shots_for %>% arrange(game_id)
+powerplay_time <- powerplay_time %>% arrange(game_id)
 
+pp_shots_for_per_60 <- cbind(powerplay_time$game_id, powerplay_shots_for$powerplay_shots_for / (powerplay_time$penalty_time / 60))
+colnames(pp_shots_for_per_60) <- c("game_id", "pp_shots_for_per_60")
+pp_shots_for_per_60 <- tibble(pp_shots_for_per_60)
 # pp_shots_for_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>% 
 #                                summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
 #                               ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
