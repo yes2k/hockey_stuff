@@ -63,12 +63,16 @@ all_game_ids <- game_info$game_id
 ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == home_team) %>% 
                               summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
                               ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
-                              cbind(game_info$game_id, .) %>% as_tibble()
+                              cbind(game_info$game_id, .)
+colnames(ev_shots_for_per_60) <- c("game_id", "ev_shots_for_per_60")
+ev_shots_for_per_60 <- ev_shots_for_per_60 %>% as_tibble()
 
 ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == away_team) %>% 
                                     summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
                                     ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
-                                    cbind(game_info$game_id, .) %>% as_tibble()
+                                    cbind(game_info$game_id, .)
+colnames(ev_shots_against_per_60) <- c("game_id", "ev_shots_against_per_60")
+ev_shots_against_per_60 <- ev_shots_against_per_60 %>% as_tibble()
 
 # Powerplay shots for per 60
 powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & event_team == away_team) %>% 
@@ -124,7 +128,9 @@ pk_time <- pk_time %>% arrange(game_id)
 pk_shots_against <- pk_shots_against %>% arrange(game_id)
 
 pk_shots_against_per_60 <- cbind(pk_time$game_id, pk_shots_against$pk_shots_against/(pk_time$pk_time / 60)) %>%
-                        data.frame(.) %>% tibble()
+                        data.frame(.)
+colnames(pk_shots_against_per_60) <- c("game_id", "pk_shots_against_per_60")
+pk_shots_against_per_60 <- pk_shots_against_per_60 %>% as_tibble()
 
 colnames(pk_shots_for_per_60) <- c("game_id", "pk_shots_for_per_60")
 pk_shots_for_per_60 <- pk_shots_for_per_60 %>% replace_na(list(game_id=0, pk_shots_for_per_60=0))
@@ -139,11 +145,14 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
                   mutate(sv_against_percentage=SHOT/(SHOT+GOAL)) %>% dplyr::select(game_id, sv_against_percentage)
 
 
+y <- 
+
 data_list <- list(ev_shots_for_per_60, ev_shots_against_per_60, pp_shots_for_per_60, pk_shots_against_per_60, 
                   sv_for, sv_against)
 
-df <- inner_join(data_list[[1]], data_list[[2]])
+df <- inner_join(data_list[[1]], data_list[[2]], by="game_id")
 for (i in 3:length(data_list)){
-  df <- inner_join(df, data_list[[i]])
+  print(i)
+  df <- dplyr::inner_join(df, data_list[[i]], by="game_id")
 }
 
