@@ -2,6 +2,8 @@ library(RCurl); library(xml2); library(rvest); library(jsonlite); library(foreac
 library(lubridate)
 library(tidyverse)
 library(googledrive)
+library(arm)
+library(caret)
 # source("EH_scrape_functions.R")
 files_to_create <- c("game_info_df", "pbp_base", "pbp_extras",
                      "player_shifts", "player_periods", "roster_df",
@@ -60,16 +62,16 @@ scratches <- read_csv("scratches_df.csv")
 all_game_ids <- game_info$game_id
 
 # Modeling Pr(home team winning), all stats are from the point of view of the home team
-ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == home_team) %>% 
-                              summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
-                              ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
+ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v5" & event_team == home_team) %>% 
+                              summarise(home_ev_num_shots_for=n()) %>% dplyr::select(home_ev_num_shots_for)) / 
+                              ((pbp_base %>% filter(event_type == "GEND") %>% dplyr::select(game_seconds)) / 3600)) %>%
                               cbind(game_info$game_id, .)
 colnames(ev_shots_for_per_60) <- c("game_id", "ev_shots_for_per_60")
 ev_shots_for_per_60 <- ev_shots_for_per_60 %>% as_tibble()
 
-ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v5" & event_team == away_team) %>% 
-                                    summarise(home_ev_num_shots_for=n()) %>% select(home_ev_num_shots_for)) / 
-                                    ((pbp_base %>% filter(event_type == "GEND") %>% select(game_seconds)) / 3600)) %>%
+ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v5" & event_team == away_team) %>% 
+                                    summarise(home_ev_num_shots_for=n()) %>% dplyr::select(home_ev_num_shots_for)) / 
+                                    ((pbp_base %>% filter(event_type == "GEND") %>% dplyr::select(game_seconds)) / 3600)) %>%
                                     cbind(game_info$game_id, .)
 colnames(ev_shots_against_per_60) <- c("game_id", "ev_shots_against_per_60")
 ev_shots_against_per_60 <- ev_shots_against_per_60 %>% as_tibble()
@@ -80,7 +82,7 @@ powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL"
                       mutate(penalty_length = as.numeric(penalty_length)) %>% 
                       summarise(penalty_time = sum(penalty_length))
 
-powerplay_shots_for <- (pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == home_team) %>%
+powerplay_shots_for <- (pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v4" & event_team == home_team) %>%
                                  summarise(powerplay_shots_for=n()))
 
 # Adding in missing games that have 0 shots or 0 minutes of powerplay time
@@ -98,9 +100,9 @@ powerplay_shots_for <- powerplay_shots_for %>% arrange(game_id)
 powerplay_time <- powerplay_time %>% arrange(game_id)
 
 pp_shots_for_per_60 <- cbind(powerplay_time$game_id, powerplay_shots_for$powerplay_shots_for / (powerplay_time$penalty_time / 60)) %>%
-                        data.frame(.) %>% as_tibble()
-
+                        data.frame(.)
 colnames(pp_shots_for_per_60) <- c("game_id", "pp_shots_per_60")
+pp_shots_for_per_60 <- pp_shots_for_per_60 %>% as_tibble()
 
 pp_shots_for_per_60 <- pp_shots_for_per_60 %>% replace_na(list(game_id=0, pp_shots_per_60=0))
 
@@ -110,7 +112,7 @@ pk_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & even
                     mutate(pk_length = as.numeric(pk_length)) %>% 
                     summarise(pk_time = sum(pk_length))
 
-pk_shots_against <- (pbp_base %>% group_by(game_id) %>% filter(event_type == "SHOT" & game_strength_state == "5v4" & event_team == away_team) %>%
+pk_shots_against <- (pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v4" & event_team == away_team) %>%
                           summarise(pk_shots_against=n()))
 
 # Adding in missing games that have 0 shots or 0 minutes of pk time
@@ -131,9 +133,7 @@ pk_shots_against_per_60 <- cbind(pk_time$game_id, pk_shots_against$pk_shots_agai
                         data.frame(.)
 colnames(pk_shots_against_per_60) <- c("game_id", "pk_shots_against_per_60")
 pk_shots_against_per_60 <- pk_shots_against_per_60 %>% as_tibble()
-
-colnames(pk_shots_for_per_60) <- c("game_id", "pk_shots_for_per_60")
-pk_shots_for_per_60 <- pk_shots_for_per_60 %>% replace_na(list(game_id=0, pk_shots_for_per_60=0))
+pk_shots_against_per_60 <- pk_shots_against_per_60 %>% replace_na(list(game_id=0, pk_shots_against_per_60=0))
 
 # Getting save percentage for both home and away teams
 sv_for <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | event_type=="GOAL") & event_team==away_team) %>%
@@ -144,15 +144,22 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
                   count(event_type) %>% pivot_wider(names_from=event_type, values_from=n) %>% replace(., is.na(.), 0) %>%
                   mutate(sv_against_percentage=SHOT/(SHOT+GOAL)) %>% dplyr::select(game_id, sv_against_percentage)
 
+# Getting dummy variables for each player, home and away
+players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% unique() 
+dummy_model <- dummyVars("~player:is_home", data=players_in_game, sep="_", fullRank=T)
+player_dummy <- data.frame(predict(dummy_model, newdata=players_in_game)) %>% as_tibble()
+player_dummy <- bind_cols(players_in_game %>% dplyr::select(game_id), player_dummy) %>% filter(game_id==2018020001)
+# %>% 
+#                   filter(game_id==2018020001) %>% filter_all(.,any_vars(.>0))
 
-y <- 
+
+y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
 
 data_list <- list(ev_shots_for_per_60, ev_shots_against_per_60, pp_shots_for_per_60, pk_shots_against_per_60, 
-                  sv_for, sv_against)
+                  sv_for, sv_against, y)
 
 df <- inner_join(data_list[[1]], data_list[[2]], by="game_id")
 for (i in 3:length(data_list)){
   print(i)
   df <- dplyr::inner_join(df, data_list[[i]], by="game_id")
 }
-
