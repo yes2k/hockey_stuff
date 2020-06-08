@@ -146,9 +146,9 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
 
 # Getting dummy variables for each player, home and away
 players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% unique() 
-dummy_model <- dummyVars("~player:is_home", data=players_in_game, sep="_", fullRank=T)
+dummy_model <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=F)
 player_dummy <- data.frame(predict(dummy_model, newdata=players_in_game)) %>% as_tibble()
-player_dummy <- bind_cols(players_in_game %>% dplyr::select(game_id), player_dummy) %>% filter(game_id==2018020001)
+# player_dummy <- bind_cols(players_in_game %>% dplyr::select(game_id), player_dummy) %>% filter(game_id==2018020001)
 # %>% 
 #                   filter(game_id==2018020001) %>% filter_all(.,any_vars(.>0))
 
