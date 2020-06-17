@@ -145,13 +145,17 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
                   mutate(sv_against_percentage=SHOT/(SHOT+GOAL)) %>% dplyr::select(game_id, sv_against_percentage)
 
 # Getting dummy variables for each player, home and away
-players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% unique() 
-dummy_model <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=F)
-player_dummy <- data.frame(predict(dummy_model, newdata=players_in_game)) %>% as_tibble()
-# player_dummy <- bind_cols(players_in_game %>% dplyr::select(game_id), player_dummy) %>% filter(game_id==2018020001)
-# %>% 
-#                   filter(game_id==2018020001) %>% filter_all(.,any_vars(.>0))
+players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% 
+                    unique() %>% dplyr::filter(is_home==1) %>% dplyr::select(-c("is_home"))
 
+players_in_game_home <- players_in_game %>% dplyr::filter(is_home==1) %>% dplyr::select(-c("is_home"))
+players_in_game_away <- players_in_game %>% dplyr::filter(is_home==0) %>% dplyr::select(-c("is_home"))
+
+dummy_model_home <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=T)
+dummy_model_away <- dummyVars("game_id~player", data-players_in_game, sep="_", fullRank=T)
+
+player_dummy_home <- data.frame(predict(dummy_model_home, newdata=players_in_game_home)) %>% as_tibble()
+player_dummy_away <- data.frame(predict(dummy_model_away, newdata-players_in_game_away)) %>% as_tibble()
 
 y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
 
