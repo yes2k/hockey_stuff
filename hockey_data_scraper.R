@@ -61,6 +61,7 @@ scratches <- read_csv("scratches_df.csv")
 
 all_game_ids <- game_info$game_id
 
+
 # Modeling Pr(home team winning), all stats are from the point of view of the home team
 ev_shots_for_per_60 <-((pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v5" & event_team == home_team) %>% 
                               summarise(home_ev_num_shots_for=n()) %>% dplyr::select(home_ev_num_shots_for)) / 
@@ -75,6 +76,7 @@ ev_shots_against_per_60 <- ((pbp_base %>% group_by(game_id) %>% filter((event_ty
                                     cbind(game_info$game_id, .)
 colnames(ev_shots_against_per_60) <- c("game_id", "ev_shots_against_per_60")
 ev_shots_against_per_60 <- ev_shots_against_per_60 %>% as_tibble()
+
 
 # Powerplay shots for per 60
 powerplay_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & event_team == away_team) %>% 
@@ -106,6 +108,7 @@ pp_shots_for_per_60 <- pp_shots_for_per_60 %>% as_tibble()
 
 pp_shots_for_per_60 <- pp_shots_for_per_60 %>% replace_na(list(game_id=0, pp_shots_per_60=0))
 
+
 # Penalty kill shots against per 60
 pk_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & event_team == home_team) %>% 
                     extract(col=event_detail, regex="(^[0-9][0-9]?)", into="pk_length") %>% 
@@ -114,6 +117,7 @@ pk_time <- pbp_base %>% group_by(game_id) %>% filter(event_type == "PENL" & even
 
 pk_shots_against <- (pbp_base %>% group_by(game_id) %>% filter((event_type == "SHOT" | event_type == "GOAL") & game_strength_state == "5v4" & event_team == away_team) %>%
                           summarise(pk_shots_against=n()))
+
 
 # Adding in missing games that have 0 shots or 0 minutes of pk time
 for(g in all_game_ids){
@@ -135,6 +139,7 @@ colnames(pk_shots_against_per_60) <- c("game_id", "pk_shots_against_per_60")
 pk_shots_against_per_60 <- pk_shots_against_per_60 %>% as_tibble()
 pk_shots_against_per_60 <- pk_shots_against_per_60 %>% replace_na(list(game_id=0, pk_shots_against_per_60=0))
 
+
 # Getting save percentage for both home and away teams
 sv_for <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | event_type=="GOAL") & event_team==away_team) %>%
                   count(event_type) %>% pivot_wider(names_from=event_type, values_from=n) %>% replace(., is.na(.), 0) %>%
@@ -144,18 +149,18 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
                   count(event_type) %>% pivot_wider(names_from=event_type, values_from=n) %>% replace(., is.na(.), 0) %>%
                   mutate(sv_against_percentage=SHOT/(SHOT+GOAL)) %>% dplyr::select(game_id, sv_against_percentage)
 
+
 # Getting dummy variables for each player, home and away
-players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% 
-                    unique() %>% dplyr::filter(is_home==1) %>% dplyr::select(-c("is_home"))
+players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% unique() 
 
 players_in_game_home <- players_in_game %>% dplyr::filter(is_home==1) %>% dplyr::select(-c("is_home"))
 players_in_game_away <- players_in_game %>% dplyr::filter(is_home==0) %>% dplyr::select(-c("is_home"))
 
 dummy_model_home <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=T)
-dummy_model_away <- dummyVars("game_id~player", data-players_in_game, sep="_", fullRank=T)
+dummy_model_away <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=T)
 
 player_dummy_home <- data.frame(predict(dummy_model_home, newdata=players_in_game_home)) %>% as_tibble()
-player_dummy_away <- data.frame(predict(dummy_model_away, newdata-players_in_game_away)) %>% as_tibble()
+player_dummy_away <- data.frame(predict(dummy_model_away, newdata=players_in_game_away)) %>% as_tibble()
 
 y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
 
