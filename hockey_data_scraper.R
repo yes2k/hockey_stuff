@@ -4,6 +4,7 @@ library(tidyverse)
 library(googledrive)
 library(arm)
 library(caret)
+library(glmnet)
 # source("EH_scrape_functions.R")
 files_to_create <- c("game_info_df", "pbp_base", "pbp_extras",
                      "player_shifts", "player_periods", "roster_df",
@@ -150,25 +151,31 @@ sv_against <- pbp_base %>% group_by(game_id) %>% filter((event_type=="SHOT" | ev
                   mutate(sv_against_percentage=SHOT/(SHOT+GOAL)) %>% dplyr::select(game_id, sv_against_percentage)
 
 
-# Getting dummy variables for each player, home and away
+# ========= Getting dummy variables for each player, home and away ===========
 players_in_game <- player_periods %>% group_by(game_id) %>% dplyr::select(player, is_home, game_id) %>% unique() 
 
-players_in_game_home <- players_in_game %>% dplyr::filter(is_home==1) %>% dplyr::select(-c("is_home"))
-players_in_game_away <- players_in_game %>% dplyr::filter(is_home==0) %>% dplyr::select(-c("is_home"))
+# 1 is home, 0 is away, NA is didn't play in game
+dummy_players_in_game <- players_in_game %>% pivot_wider(names_from = player, values_from = is_home)
 
-dummy_model_home <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=T)
-dummy_model_away <- dummyVars("game_id~player", data=players_in_game, sep="_", fullRank=T)
+player_dummy_home <- dummy_players_in_game %>% mutate_at(vars(-group_cols()), function(x){ifelse(x == 0 || is.na(x), 0, 1)})
+player_dummy_away <- dummy_players_in_game %>% mutate_at(vars(-group_cols()), function(x){ifelse(x == 1 || is.na(x), 0, 1)})
 
-player_dummy_home <- data.frame(predict(dummy_model_home, newdata=players_in_game_home)) %>% as_tibble()
-player_dummy_away <- data.frame(predict(dummy_model_away, newdata=players_in_game_away)) %>% as_tibble()
+player_names <- colnames(dummy_players_in_game)[2:length(colnames(dummy_players_in_game))]
+
+colnames(player_dummy_home) <- c("game_id", paste("home.", player_names, sep=""))
+colnames(player_dummy_away) <- c("game_id", paste("away.", player_names, sep=""))
+
+dummy_players <- inner_join(player_dummy_away, player_dummy_home, by="game_id")
 
 y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
 
 data_list <- list(ev_shots_for_per_60, ev_shots_against_per_60, pp_shots_for_per_60, pk_shots_against_per_60, 
-                  sv_for, sv_against, y)
+                  sv_for, sv_against, y, dummy_players)
 
 df <- inner_join(data_list[[1]], data_list[[2]], by="game_id")
 for (i in 3:length(data_list)){
   print(i)
   df <- dplyr::inner_join(df, data_list[[i]], by="game_id")
 }
+
+model <- cv.glmnet(df %>% dplyr::select(-c("game_id", "home_team_win")) %>% data.matrix(.), df %>% dplyr::pull("home_team_win"), alpha=0, family = "binomial")
