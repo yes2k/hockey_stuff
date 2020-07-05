@@ -179,3 +179,6 @@ for (i in 3:length(data_list)){
 }
 
 model <- cv.glmnet(df %>% dplyr::select(-c("game_id", "home_team_win")) %>% data.matrix(.), df %>% dplyr::pull("home_team_win"), alpha=0, family = "binomial")
+model_coef <- coef(model, s="lambda.min")
+model_coef <- as_tibble(data.frame(name = model_coef@Dimnames[[1]][model_coef@i + 1], coefficient = model_coef@x))
+
