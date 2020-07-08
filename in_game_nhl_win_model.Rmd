@@ -1,0 +1,71 @@
+---
+title: "in_game_nhl_win_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RCurl); library(xml2); library(rvest); library(jsonlite); library(foreach)
+library(lubridate)
+library(tidyverse)
+library(googledrive)
+library(arm)
+library(caret)
+library(glmnet)
+```
+
+
+Downloading the Data
+```{r message=FALSE}
+events_summary_id <- "1Unfegmn3_LfxFLsCWRFR1wphiDz-saP2"
+game_info_id <- "1FHg7g0v7TUwFLyQXeKNBBduF4PvpXEgQ"
+pbp_base_id <- "1i_Eflfc4Mc18mgoxAi_yyRN4lI1VBa3W"
+pbp_extras_id <- "1dZZKYv-ZD_vC0OF-fy4UTJ_gAn4Waf5N"
+player_periods_id <- "1hf4XO5Z5hcyx-USryUaUvagmwDpoYuJU"
+player_shifts_id <- "1PfGd6homdvVD63nf8nd9VsRQhTykawjH"
+report_id <- "1-gyamQ0ot5HCXgTNdTydy0Fu_35kp7-i"
+roster_id <- "1Uqsmeq9rKZWIVut97Yyw0YB-36rCFdWM"
+scratches_id <- "1hMqObiOABAWGwthXTGdJIY0OtniQRQ9A"
+
+drive_download(as_id(events_summary_id), overwrite = TRUE)
+drive_download(as_id(game_info_id), overwrite = TRUE)
+drive_download(as_id(pbp_base_id), overwrite = TRUE)
+drive_download(as_id(pbp_extras_id), overwrite = TRUE)
+drive_download(as_id(player_periods_id), overwrite = TRUE)
+drive_download(as_id(player_shifts_id), overwrite = TRUE)
+drive_download(as_id(report_id), overwrite = TRUE)
+drive_download(as_id(roster_id), overwrite = TRUE)
+drive_download(as_id(scratches_id), overwrite = TRUE)
+
+events_summary <- read_csv("events_summary_df.csv")
+game_info <- read_csv("game_info_df.csv")
+pbp_base <- read_csv("pbp_base.csv")
+pbp_extras <- read_csv("pbp_extras.csv")
+player_periods <- read_csv("player_periods.csv")
+player_shifts <- read_csv("player_shifts.csv")
+report <- read_csv("report.csv")
+roster <- read_csv("roster_df.csv")
+scratches <- read_csv("scratches_df.csv")
+```
+
+Getting shift data
+```{r}
+new_pbp_base <- pbp_base %>% dplyr::filter(game_seconds > 0)
+GF <- str_extract(new_pbp_base$game_score_state, "^\\d") %>% as.numeric
+GA <- str_extract(new_pbp_base$game_score_state, "\\d$") %>% as.numeric
+num_home_players <- str_extract(new_pbp_base$game_strength_state, "^\\d") %>% as.numeric
+num_away_players <- str_extract(new_pbp_base$game_strength_state, "\\d$") %>% as.numeric
+y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
+
+df <- cbind(new_pbp_base$game_id, new_pbp_base$game_seconds, GF-GA, num_home_players - num_away_players)
+colnames(df) <- c("game_id", "game_seconds", "GF-GA", "num_home-away_players")
+df <- df %>% as_tibble(.)
+
+df <- inner_join(y, df)
+
+model <- glm(home_team_win~game_seconds+`GF-GA`+`num_home-away_players`, data=df, family="binomial")
+
+pred <- df %>% dplyr::filter(game_id=="2018020005") %>% dplyr::select(-game_id) %>% predict(model,newdata=., type="response")
+plot.ts(pred)
+```
+
