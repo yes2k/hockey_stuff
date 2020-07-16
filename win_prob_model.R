@@ -22,35 +22,35 @@ library(glmnet)
 # }
 
 # Loading data
-events_summary_id <- "1Unfegmn3_LfxFLsCWRFR1wphiDz-saP2"
-game_info_id <- "1FHg7g0v7TUwFLyQXeKNBBduF4PvpXEgQ"
-pbp_base_id <- "1i_Eflfc4Mc18mgoxAi_yyRN4lI1VBa3W"
-pbp_extras_id <- "1dZZKYv-ZD_vC0OF-fy4UTJ_gAn4Waf5N"
-player_periods_id <- "1hf4XO5Z5hcyx-USryUaUvagmwDpoYuJU"
-player_shifts_id <- "1PfGd6homdvVD63nf8nd9VsRQhTykawjH"
-report_id <- "1-gyamQ0ot5HCXgTNdTydy0Fu_35kp7-i"
-roster_id <- "1Uqsmeq9rKZWIVut97Yyw0YB-36rCFdWM"
-scratches_id <- "1hMqObiOABAWGwthXTGdJIY0OtniQRQ9A"
+# events_summary_id <- "1Unfegmn3_LfxFLsCWRFR1wphiDz-saP2"
+# game_info_id <- "1FHg7g0v7TUwFLyQXeKNBBduF4PvpXEgQ"
+# pbp_base_id <- "1i_Eflfc4Mc18mgoxAi_yyRN4lI1VBa3W"
+# pbp_extras_id <- "1dZZKYv-ZD_vC0OF-fy4UTJ_gAn4Waf5N"
+# player_periods_id <- "1hf4XO5Z5hcyx-USryUaUvagmwDpoYuJU"
+# player_shifts_id <- "1PfGd6homdvVD63nf8nd9VsRQhTykawjH"
+# report_id <- "1-gyamQ0ot5HCXgTNdTydy0Fu_35kp7-i"
+# roster_id <- "1Uqsmeq9rKZWIVut97Yyw0YB-36rCFdWM"
+# scratches_id <- "1hMqObiOABAWGwthXTGdJIY0OtniQRQ9A"
+# 
+# drive_download(as_id(events_summary_id), overwrite = TRUE)
+# drive_download(as_id(game_info_id), overwrite = TRUE)
+# drive_download(as_id(pbp_base_id), overwrite = TRUE)
+# drive_download(as_id(pbp_extras_id), overwrite = TRUE)
+# drive_download(as_id(player_periods_id), overwrite = TRUE)
+# drive_download(as_id(player_shifts_id), overwrite = TRUE)
+# drive_download(as_id(report_id), overwrite = TRUE)
+# drive_download(as_id(roster_id), overwrite = TRUE)
+# drive_download(as_id(scratches_id), overwrite = TRUE)
 
-drive_download(as_id(events_summary_id), overwrite = TRUE)
-drive_download(as_id(game_info_id), overwrite = TRUE)
-drive_download(as_id(pbp_base_id), overwrite = TRUE)
-drive_download(as_id(pbp_extras_id), overwrite = TRUE)
-drive_download(as_id(player_periods_id), overwrite = TRUE)
-drive_download(as_id(player_shifts_id), overwrite = TRUE)
-drive_download(as_id(report_id), overwrite = TRUE)
-drive_download(as_id(roster_id), overwrite = TRUE)
-drive_download(as_id(scratches_id), overwrite = TRUE)
-
-events_summary <- read_csv("events_summary_df.csv")
-game_info <- read_csv("game_info_df.csv")
-pbp_base <- read_csv("pbp_base.csv")
-pbp_extras <- read_csv("pbp_extras.csv")
-player_periods <- read_csv("player_periods.csv")
-player_shifts <- read_csv("player_shifts.csv")
-report <- read_csv("report.csv")
-roster <- read_csv("roster_df.csv")
-scratches <- read_csv("scratches_df.csv")
+events_summary <- read_csv("data/events_summary_df.csv")
+game_info <- read_csv("data/game_info_df.csv")
+pbp_base <- read_csv("data/pbp_base.csv")
+pbp_extras <- read_csv("data/pbp_extras.csv")
+player_periods <- read_csv("data/player_periods.csv")
+player_shifts <- read_csv("data/player_shifts.csv")
+report <- read_csv("data/report.csv")
+roster <- read_csv("data/roster_df.csv")
+scratches <- read_csv("data/scratches_df.csv")
 
 # ===== Looking at where penalties occur on the ice =====
 # penalty_positions <- pbp_base %>% filter(event_type == "PENL") %>% 
