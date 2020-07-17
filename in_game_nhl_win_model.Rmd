@@ -87,8 +87,8 @@ summary(model)
 
 
 ```{r}
-rt_odds_graph <- function(model, pbp){
-  event_types <- c("BLOCK", "SHOT", "GIVE", "HIT")
+rt_odds_graph <- function(model, pbp, game_info){
+  event_types <- c("BLOCK", "SHOT", "GIVE", "HIT", "GOAL")
   cols_to_select <- c("game_id", "game_seconds", "event_type",
                       "event_team", "home_team", "away_team",
                       "home_score", "away_score", "game_strength_state", 
@@ -115,16 +115,19 @@ rt_odds_graph <- function(model, pbp){
   
   new_pbp <- type_convert(new_pbp)
   
-  odd_preds <- predict(model, newdata = new_pbp %>% dplyr::select("game_seconds", "event_team", "GFA", 
+  prob_home_team_winning <- predict(model, newdata = new_pbp %>% dplyr::select("game_seconds", "event_team", "GFA", 
                             "homeaway_players", "event_typeBLOCK","event_typeGIVE", 
                             "event_typeHIT", "event_typeSHOT"), type="response")
-  new_pbp <- cbind(new_pbp, odd_preds)
+  new_pbp <- cbind(new_pbp, prob_home_team_winning)
   print(new_pbp)
-  ggplot(new_pbp, aes(x=game_seconds, y=odd_preds)) + geom_line()
+  ggplot(new_pbp, aes(x=game_seconds, y=prob_home_team_winning)) + 
+    geom_line() + ggtitle(paste("In Game Win Probability Tracker ", game_info$away_team, " @ ", game_info$home_team, ", ", game_info$game_date, sep="")) +
+    theme(plot.title = element_text(hjust = 0.5))
+
 }
 
-gid <- "2018020004"
-rt_odds_graph(model, pbp_base %>% dplyr::filter(game_id == gid))
+gid <- "2018020001"
+rt_odds_graph(model, pbp_base %>% dplyr::filter(game_id == gid), game_info %>% dplyr::filter(game_id == gid))
 ```
 
 
