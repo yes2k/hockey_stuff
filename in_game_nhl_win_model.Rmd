@@ -49,46 +49,17 @@ What sort of data are we going to need to?
   
   
 ```{r}
-event_types <- c("BLOCK", "SHOT", "GIVE", "FAC", "HIT")
-cols_to_select <- c("game_id", "game_seconds", "event_type",
-                    "event_team", "home_team", "away_team",
-                    "home_score", "away_score", "game_strength_state", 
-                    "game_score_state")
 
-new_pbp <- pbp_base %>% 
-            dplyr::filter(game_seconds > 0 & event_type %in% event_types) %>% 
-            dplyr::select(all_of(cols_to_select)) %>%
-            dplyr::mutate(GF = as.numeric(str_extract(game_score_state, "^\\d"))) %>%
-            dplyr::mutate(GA = as.numeric(str_extract(game_score_state, "\\d$"))) %>%
-            dplyr::mutate(num_home_players = as.numeric(str_extract(game_strength_state, "^\\d"))) %>%
-            dplyr::mutate(num_away_players = as.numeric(str_extract(game_strength_state, "\\d$"))) %>%
-            dplyr::mutate(GFA = GF - GA) %>%
-            dplyr::mutate(homeaway_players = num_home_players - num_away_players) %>%
-            dplyr::mutate(event_team = ifelse(event_team == home_team, 1, 0)) %>%
-            drop_na()
+data_pipeline_2 <- function(pbp){
+  event_types <- c("BLOCK", "SHOT", "GIVE", "FAC", "HIT")
+  cols_to_select <- c("game_id", "game_seconds", "event_type",
+                      "event_team", "home_team", "away_team",
+                      "home_score", "away_score", "game_strength_state", 
+                      "game_score_state")
+}
 
-dummy_model <- dummyVars("~event_type", data=new_pbp)
-event_type_dummy <- data.frame(predict(dummy_model, newdata=new_pbp))
-new_pbp <- cbind(new_pbp, event_type_dummy) %>% as.tibble(.)
-
-new_pbp <- new_pbp %>% dplyr::select("game_id", "game_seconds", "event_team", 
-                          "homeaway_players", "event_typeSHOT", "event_typeGIVE",
-                          "event_typeBLOCK","GFA", "event_typeHIT")
-
-new_pbp <- type_convert(new_pbp)
-```
-
-```{r}
-y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select(game_id, home_team_win)
-df <- inner_join(y, new_pbp)
-model <- glm(home_team_win~., data=df %>% dplyr::select(-"game_id"), family="binomial")
-summary(model) 
-```
-
-
-```{r}
-rt_odds_graph <- function(model, pbp, game_info){
-  event_types <- c("BLOCK", "SHOT", "GIVE", "HIT", "GOAL")
+data_pipeline <- function(pbp){
+  event_types <- c("BLOCK", "SHOT", "GIVE", "FAC", "HIT")
   cols_to_select <- c("game_id", "game_seconds", "event_type",
                       "event_team", "home_team", "away_team",
                       "home_score", "away_score", "game_strength_state", 
@@ -103,30 +74,45 @@ rt_odds_graph <- function(model, pbp, game_info){
               dplyr::mutate(num_away_players = as.numeric(str_extract(game_strength_state, "\\d$"))) %>%
               dplyr::mutate(GFA = GF - GA) %>%
               dplyr::mutate(homeaway_players = num_home_players - num_away_players) %>%
-              dplyr::mutate(event_team = ifelse(event_team == home_team, 1, 0))
-
+              dplyr::mutate(event_team = ifelse(event_team == home_team, 1, 0)) %>%
+              drop_na()
+  
   dummy_model <- dummyVars("~event_type", data=new_pbp)
   event_type_dummy <- data.frame(predict(dummy_model, newdata=new_pbp))
-  new_pbp <- cbind(new_pbp, event_type_dummy) %>% as.tibble(.)
+  new_pbp <- cbind(new_pbp, event_type_dummy) %>% as_tibble(.)
   
-  new_pbp <- new_pbp %>% dplyr::select("game_id", "game_seconds", "event_team", "GFA", 
-                            "homeaway_players", "event_typeBLOCK","event_typeGIVE", 
-                            "event_typeHIT", "event_typeSHOT")
+  new_pbp <- new_pbp %>% dplyr::select("game_id", "game_seconds", "event_team", 
+                            "homeaway_players", "event_typeSHOT", "event_typeGIVE",
+                            "event_typeBLOCK","GF", "GA", "event_typeHIT")
   
-  new_pbp <- type_convert(new_pbp)
+  new_pbp <- type_convert(new_pbp) 
+}
+
+new_pbp <- data_pipeline(pbp_base)
+```
+
+```{r}
+y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select("game_id", "home_team_win")
+df <- inner_join(y, new_pbp)
+model <- glm(home_team_win~., data=df %>% dplyr::select(-"game_id"), family="binomial")
+summary(model) 
+```
+
+
+```{r}
+rt_odds_graph <- function(model, pbp, game_info){
+  new_pbp <- data_pipeline(pbp)
   
-  prob_home_team_winning <- predict(model, newdata = new_pbp %>% dplyr::select("game_seconds", "event_team", "GFA", 
-                            "homeaway_players", "event_typeBLOCK","event_typeGIVE", 
-                            "event_typeHIT", "event_typeSHOT"), type="response")
+  prob_home_team_winning <- predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id")), type="response")
   new_pbp <- cbind(new_pbp, prob_home_team_winning)
   print(new_pbp)
   ggplot(new_pbp, aes(x=game_seconds, y=prob_home_team_winning)) + 
-    geom_line() + ggtitle(paste("In Game Win Probability Tracker ", game_info$away_team, " @ ", game_info$home_team, ", ", game_info$game_date, sep="")) +
+    geom_line() + ggtitle(paste("In Game Win Probability Tracker ", game_info$away_team, " @ ", 
+                                game_info$home_team, ", ", game_info$game_date, sep="")) +
     theme(plot.title = element_text(hjust = 0.5))
 
 }
-
-gid <- "2018020001"
+gid <- "2018020153"
 rt_odds_graph(model, pbp_base %>% dplyr::filter(game_id == gid), game_info %>% dplyr::filter(game_id == gid))
 ```
 
