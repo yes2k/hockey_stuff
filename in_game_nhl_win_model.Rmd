@@ -37,64 +37,62 @@ Getting shift data
 What sort of data are we going to need to?
   seconds into the game
   home strength state (num players home - num players away)
-  event type (dummy variables), should also indicate if it's home or away event type
+  
+  -Not needed
+  event type (dummy variables), should also indicate if it's home or away event type 
     goal
     blocked shot
     shot (xG might be a better indicator)
     giveaway
     takeaway
     faceoff
+    
   home and away players on ice (dummy var)
   teams (dummy var)
   
   
 ```{r}
-
-data_pipeline_2 <- function(pbp){
-  event_types <- c("BLOCK", "SHOT", "GIVE", "FAC", "HIT")
-  cols_to_select <- c("game_id", "game_seconds", "event_type",
-                      "event_team", "home_team", "away_team",
-                      "home_score", "away_score", "game_strength_state", 
-                      "game_score_state")
-}
+# view(new_pbp %>% filter(game_id == gid))
 
 data_pipeline <- function(pbp){
-  event_types <- c("BLOCK", "SHOT", "GIVE", "FAC", "HIT")
-  cols_to_select <- c("game_id", "game_seconds", "event_type",
-                      "event_team", "home_team", "away_team",
-                      "home_score", "away_score", "game_strength_state", 
-                      "game_score_state")
+  cols_to_select <- c("game_id", "game_seconds","home_team", "away_team",
+                      "home_score", "away_score", "game_strength_state", "event_type")
+  
+  events_to_remove <- c("GSTART", "GEND", "PSTART", "PEND")
   
   new_pbp <- pbp %>% 
-              dplyr::filter(game_seconds > 0 & event_type %in% event_types) %>% 
+              filter(game_seconds > 0 & !event_type %in% events_to_remove) %>% 
               dplyr::select(all_of(cols_to_select)) %>%
-              dplyr::mutate(GF = as.numeric(str_extract(game_score_state, "^\\d"))) %>%
-              dplyr::mutate(GA = as.numeric(str_extract(game_score_state, "\\d$"))) %>%
-              dplyr::mutate(num_home_players = as.numeric(str_extract(game_strength_state, "^\\d"))) %>%
-              dplyr::mutate(num_away_players = as.numeric(str_extract(game_strength_state, "\\d$"))) %>%
-              dplyr::mutate(GFA = GF - GA) %>%
-              dplyr::mutate(homeaway_players = num_home_players - num_away_players) %>%
-              dplyr::mutate(event_team = ifelse(event_team == home_team, 1, 0)) %>%
-              drop_na()
-  
-  dummy_model <- dummyVars("~event_type", data=new_pbp)
-  event_type_dummy <- data.frame(predict(dummy_model, newdata=new_pbp))
-  new_pbp <- cbind(new_pbp, event_type_dummy) %>% as_tibble(.)
-  
-  new_pbp <- new_pbp %>% dplyr::select("game_id", "game_seconds", "event_team", 
-                            "homeaway_players", "event_typeSHOT", "event_typeGIVE",
-                            "event_typeBLOCK","GF", "GA", "event_typeHIT")
-  
+              mutate(GF = home_score) %>%
+              mutate(GA = away_score) %>%
+              mutate(num_home_players = str_extract(game_strength_state, "^.")) %>%
+              mutate(num_away_players = str_extract(game_strength_state, ".$")) %>%
+              mutate(num_home_players = ifelse(num_home_players == "E", 
+                                               ifelse(game_seconds < 3600, "5", "3"), 
+                                               num_home_players)) %>%
+              mutate(num_away_players = ifelse(num_away_players == "E", 
+                                               ifelse(game_seconds < 3600, "5", "3"),
+                                               num_away_players)) %>%
+              mutate(num_home_players = as.numeric(num_home_players)) %>%
+              mutate(num_away_players = as.numeric(num_away_players))
+    
+    
+  print(colnames(new_pbp))
+  new_pbp <- new_pbp %>% dplyr::select("game_id", "game_seconds", "GF", 
+                                       "GA", "game_seconds", "num_home_players", 
+                                       "num_away_players")
   new_pbp <- type_convert(new_pbp) 
 }
 
 new_pbp <- data_pipeline(pbp_base)
+new_pbp %>% filter(game_id == "2018020001")
 ```
 
 ```{r}
-y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% dplyr::select("game_id", "home_team_win")
+y <- game_info %>% mutate(home_team_win=ifelse(home_score>away_score, 1, 0)) %>% 
+                  dplyr::select("game_id","home_team_win")
 df <- inner_join(y, new_pbp)
-model <- glm(home_team_win~., data=df %>% dplyr::select(-"game_id"), family="binomial")
+model <- glm(home_team_win~., data=df %>% dplyr::select(-c("game_id")), family="binomial")
 summary(model) 
 ```
 
@@ -102,17 +100,16 @@ summary(model)
 ```{r}
 rt_odds_graph <- function(model, pbp, game_info){
   new_pbp <- data_pipeline(pbp)
-  
-  prob_home_team_winning <- predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id")), type="response")
-  new_pbp <- cbind(new_pbp, prob_home_team_winning)
+  odds_home_team_winning <- exp(predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id"))))
+  new_pbp <- cbind(new_pbp, odds_home_team_winning)
   print(new_pbp)
-  ggplot(new_pbp, aes(x=game_seconds, y=prob_home_team_winning)) + 
+  ggplot(new_pbp, aes(x=game_seconds, y=odds_home_team_winning)) + 
     geom_line() + ggtitle(paste("In Game Win Probability Tracker ", game_info$away_team, " @ ", 
                                 game_info$home_team, ", ", game_info$game_date, sep="")) +
     theme(plot.title = element_text(hjust = 0.5))
 
 }
-gid <- "2018020153"
+gid <- "2018020004"
 rt_odds_graph(model, pbp_base %>% dplyr::filter(game_id == gid), game_info %>% dplyr::filter(game_id == gid))
 ```
 
