@@ -1,0 +1,77 @@
+---
+title: "xG_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=T}
+library(tidyverse)
+library(tidyselect)
+library(caret)
+```
+
+Getting the data
+```{r}
+events_summary <- read_csv("data/events_summary_df.csv")
+game_info <- read_csv("data/game_info_df.csv")
+pbp_base <- read_csv("data/pbp_base.csv")
+pbp_extras <- read_csv("data/pbp_extras.csv")
+player_periods <- read_csv("data/player_periods.csv")
+player_shifts <- read_csv("data/player_shifts.csv")
+report <- read_csv("data/report.csv")
+roster <- read_csv("data/roster_df.csv")
+scratches <- read_csv("data/scratches_df.csv")
+```
+
+Variables needed to make model
+  shot type
+  shooter indicator
+  goalie indicator
+  goal state
+  strength state
+  last event
+
+
+The person who took the shots' team will be in event team, use that to get the goalie
+
+Proccessing data
+```{r}
+data_pipeline_xG <- function(pbp){
+  # events_to_remove <- c("ANTHEM", "CHANGE", "CHL", "EGPID", 
+  #                       "EIEND", "EISTR", "GEND", "GOFF", 
+  #                       "PEND", "PGEND", "PGSTR", "PSTR", "STOP")
+  
+  new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL")) %>%
+                  mutate(GF = home_score) %>%
+                  mutate(GA = away_score) %>%
+                  mutate(num_home_players = str_extract(game_strength_state, "^.")) %>%
+                  mutate(num_away_players = str_extract(game_strength_state, ".$")) %>%
+                  mutate(num_home_players = ifelse(num_home_players == "E", 
+                                                   ifelse(game_seconds < 3600, "5", "3"), 
+                                                   num_home_players)) %>%
+                  mutate(num_away_players = ifelse(num_away_players == "E", 
+                                                   ifelse(game_seconds < 3600, "5", "3"),
+                                                   num_away_players)) %>%
+                  mutate(num_home_players = as.numeric(num_home_players)) %>%
+                  mutate(num_away_players = as.numeric(num_away_players)) %>%
+                  mutate(goalie = ifelse(event_team == home_team, home_goalie, away_goalie)) %>%
+                  mutate(shooter = event_player_1) %>%
+                  dplyr::select("GF", "GA", "num_home_players", "num_away_players", 
+                                "event_detail", "coords_x", "coords_y", "shooter", 
+                                "goalie")
+  
+  dummy_event_detail <- dummyVars("~event_detail+goalie+shooter", data=new_pbp) %>%
+                          predict(., newdata=new_pbp) %>%
+                          data.frame(.)
+  
+}
+```
+
+
+```{r}
+df <- data_pipeline_xG(pbp_base)
+```
+
