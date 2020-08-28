@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r echo=T}
 library(tidyverse)
 library(tidyselect)
+library(glmnet)
 library(caret)
 ```
 
@@ -35,8 +36,6 @@ Variables needed to make model
   last event
 
 
-The person who took the shots' team will be in event team, use that to get the goalie
-
 Proccessing data
 ```{r}
 data_pipeline_xG <- function(pbp){
@@ -45,33 +44,64 @@ data_pipeline_xG <- function(pbp){
   #                       "PEND", "PGEND", "PGSTR", "PSTR", "STOP")
   
   new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL")) %>%
-                  mutate(GF = home_score) %>%
-                  mutate(GA = away_score) %>%
-                  mutate(num_home_players = str_extract(game_strength_state, "^.")) %>%
-                  mutate(num_away_players = str_extract(game_strength_state, ".$")) %>%
-                  mutate(num_home_players = ifelse(num_home_players == "E", 
-                                                   ifelse(game_seconds < 3600, "5", "3"), 
-                                                   num_home_players)) %>%
-                  mutate(num_away_players = ifelse(num_away_players == "E", 
-                                                   ifelse(game_seconds < 3600, "5", "3"),
-                                                   num_away_players)) %>%
-                  mutate(num_home_players = as.numeric(num_home_players)) %>%
-                  mutate(num_away_players = as.numeric(num_away_players)) %>%
-                  mutate(goalie = ifelse(event_team == home_team, home_goalie, away_goalie)) %>%
-                  mutate(shooter = event_player_1) %>%
+                  mutate(GF = home_score,
+                         GA = away_score,
+                         num_home_players = str_extract(game_strength_state, "^."),
+                         num_away_players = str_extract(game_strength_state, ".$"),
+                         num_home_players = ifelse(num_home_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"), 
+                                                         num_home_players),
+                         num_away_players = ifelse(num_away_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"),
+                                                          num_away_players),
+                         num_home_players = as.numeric(num_home_players),
+                         num_away_players = as.numeric(num_away_players),
+                         goalie = ifelse(event_team == home_team, home_goalie, away_goalie),
+                         shooter = event_player_1,
+                         y = coords_y,
+                         x = abs(coords_x),
+                         isgoal=ifelse(event_type == "GOAL", 1, 0)) %>%
                   dplyr::select("GF", "GA", "num_home_players", "num_away_players", 
-                                "event_detail", "coords_x", "coords_y", "shooter", 
-                                "goalie")
+                                "event_detail", "x", "y", "shooter", 
+                                "goalie", "event_team", "isgoal", "game_id") %>%
+                  drop_na()
   
-  dummy_event_detail <- dummyVars("~event_detail+goalie+shooter", data=new_pbp) %>%
+  dummy_event_detail <- dummyVars("~event_detail+goalie+shooter+event_team", data=new_pbp, fullRank = TRUE) %>%
                           predict(., newdata=new_pbp) %>%
                           data.frame(.)
+
+  new_pbp <- bind_cols(new_pbp %>% dplyr::select("GF", "GA", "num_home_players", "num_away_players", "x", "y", "isgoal"), 
+                       dummy_event_detail)
+  return(new_pbp)
   
 }
+test_pbp <- data_pipeline_xG(pbp_base)
 ```
 
 
 ```{r}
-df <- data_pipeline_xG(pbp_base)
+# apply(test_pbp, 2, function(x) any(is.na(x)))
+# test_pbp[is.na(test_pbp$event_detail), ]
+
+X <- test_pbp %>% dplyr::select(-"isgoal") %>% data.matrix(.)
+y <- test_pbp$isgoal
+
+model <- cv.glmnet(X, y, family="binomial", alpha=0)
+
+model_coef <- coef(model, s="lambda.min")
+model_coef_names <- model_coef@Dimnames[[1]][model_coef@i + 1]
+model_coef <- as_tibble(data.frame(name = model_coef_names, coefficient = model_coef@x))
+# ggplot(data=test_pbp %>% filter(shooterALEX.OVECHKIN == 1) , aes(x=x, y=y)) + coord_cartesian(xlim=c(0,100)) + 
+#   coord_cartesian(ylim=c(-42, 42)) + geom_density_2d_filled()
+# ggplot(data=test_pbp %>% filter(shooterTJ.BRODIE == 1) , aes(x=x, y=y)) + coord_cartesian(xlim=c(0,100)) + 
+#   coord_cartesian(ylim=c(-42, 42)) + geom_density_2d_filled()
 ```
+
+```{r}
+test <- matrix(0, 42*2*100, 1023)
+test[c(3,4), ] <- 5
+# test[c(5,6), ] <- crossing(c(-42:42), c(0:100))
+```
+
+
 
