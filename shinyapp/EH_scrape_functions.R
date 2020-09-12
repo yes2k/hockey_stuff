@@ -794,7 +794,7 @@ sc.scrape_event_summary <- function(game_id_fun, season_id_fun, attempts = 3) {
 sc.game_info <- function(game_id_fun, season_id_fun, events_data, roster_data) { 
   
   ## Find coaches
-  coach_index <- which(roster_data %in% c("Head Coaches", "Entraîneurs chef / Head Coaches")) + 1
+  coach_index <- which(roster_data %in% c("Head Coaches", "EntraÃ®neurs chef / Head Coaches")) + 1
   
   
   ## Find referees (french format / standard format)
@@ -967,7 +967,7 @@ sc.update_names_HTM <- function(data, col_name) {
         player_name == "MAXIME.TALBOT" ~ "MAX.TALBOT", 
         player_name == "MAXWELL.REINHART" ~ "MAX.REINHART",
         player_name == "MICHAEL.BLUNDEN" ~ "MIKE.BLUNDEN",
-        player_name == "MICHAËL.BOURNIVAL" ~ "MICHAEL.BOURNIVAL",
+        player_name == "MICHAÃ‹L.BOURNIVAL" ~ "MICHAEL.BOURNIVAL",
         player_name == "MICHAEL.CAMMALLERI" ~ "MIKE.CAMMALLERI", 
         player_name == "MICHAEL.FERLAND" ~ "MICHEAL.FERLAND", 
         player_name == "MICHAEL.GRIER" ~ "MIKE.GRIER",
@@ -1720,7 +1720,7 @@ sc.shifts_parse <- function(game_id_fun, season_id_fun, shifts_list, roster_data
       
       index <- which(shifts_list$home_shifts_titles[-1] == player_home_df$num_last_first[i])
       
-      shifts_list$home_shifts_text[which(shifts_list$home_shifts_text %in% c("Shift #", "Présence #Shift #"))[index]:(which(shifts_list$home_shifts_text %in% c("SHF", "PR/SHF"))[index] - 3)] %>%
+      shifts_list$home_shifts_text[which(shifts_list$home_shifts_text %in% c("Shift #", "PrÃ©sence #Shift #"))[index]:(which(shifts_list$home_shifts_text %in% c("SHF", "PR/SHF"))[index] - 3)] %>%
         matrix(ncol = 6,
                byrow = TRUE
         ) %>%
@@ -1741,7 +1741,7 @@ sc.shifts_parse <- function(game_id_fun, season_id_fun, shifts_list, roster_data
       
       index <- which(shifts_list$away_shifts_titles[-1] == player_away_df$num_last_first[i])
       
-      shifts_list$away_shifts_text[which(shifts_list$away_shifts_text %in% c("Shift #", "Présence #Shift #"))[index]:(which(shifts_list$away_shifts_text %in% c("SHF", "PR/SHF"))[index] - 3)] %>%
+      shifts_list$away_shifts_text[which(shifts_list$away_shifts_text %in% c("Shift #", "PrÃ©sence #Shift #"))[index]:(which(shifts_list$away_shifts_text %in% c("SHF", "PR/SHF"))[index] - 3)] %>%
         matrix(ncol = 6,
                byrow = TRUE
         ) %>%
@@ -1875,7 +1875,7 @@ sc.shifts_parse <- function(game_id_fun, season_id_fun, shifts_list, roster_data
       
       index <- which(shifts_list$home_shifts_titles[-1] == player_home_df$num_last_first[i])
       
-      home_shifts_text_dup[(which(home_shifts_text_dup %in% c("SHF", "PR/SHF"))[index] + 6):(which(home_shifts_text_dup %in% c("Shift #", "Présence #Shift #"))[index + 1] - 8)] %>% 
+      home_shifts_text_dup[(which(home_shifts_text_dup %in% c("SHF", "PR/SHF"))[index] + 6):(which(home_shifts_text_dup %in% c("Shift #", "PrÃ©sence #Shift #"))[index + 1] - 8)] %>% 
         matrix(
           ncol = 7,
           byrow = TRUE
@@ -1899,7 +1899,7 @@ sc.shifts_parse <- function(game_id_fun, season_id_fun, shifts_list, roster_data
       
       index <- which(shifts_list$away_shifts_titles[-1] == player_away_df$num_last_first[i])
       
-      away_shifts_text_dup[(which(away_shifts_text_dup %in% c("SHF", "PR/SHF"))[index] + 6):(which(away_shifts_text_dup %in% c("Shift #", "Présence #Shift #"))[index + 1] - 8)] %>% 
+      away_shifts_text_dup[(which(away_shifts_text_dup %in% c("SHF", "PR/SHF"))[index] + 6):(which(away_shifts_text_dup %in% c("Shift #", "PrÃ©sence #Shift #"))[index + 1] - 8)] %>% 
         matrix(
           ncol = 7,
           byrow = TRUE
@@ -4007,7 +4007,7 @@ sc.scrape_pbp <- function(games, scrape_type = "full", live_scrape = FALSE, verb
   ## Add Names
   names(scrape_report_df) <- c("game_id", "pbp_base", "pbp_extras", "player_shifts", "player_periods", 
                                "roster_df", "scratches_df", "events_summary_df", "game_info_df", "time_elapsed")
-  print(new_roster_df)
+  
   ## Print results
   cat("-------------", "\n", 
       paste0(

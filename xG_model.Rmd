@@ -12,6 +12,8 @@ library(tidyverse)
 library(tidyselect)
 library(glmnet)
 library(caret)
+library(reticulate)
+library(xgboost)
 ```
 
 Getting the data
@@ -19,12 +21,12 @@ Getting the data
 events_summary <- read_csv("data/events_summary_df.csv")
 game_info <- read_csv("data/game_info_df.csv")
 pbp_base <- read_csv("data/pbp_base.csv")
-pbp_extras <- read_csv("data/pbp_extras.csv")
-player_periods <- read_csv("data/player_periods.csv")
-player_shifts <- read_csv("data/player_shifts.csv")
-report <- read_csv("data/report.csv")
-roster <- read_csv("data/roster_df.csv")
-scratches <- read_csv("data/scratches_df.csv")
+# pbp_extras <- read_csv("data2/pbp_extras.csv") 
+# player_periods <- read_csv("data2/player_periods.csv")
+# player_shifts <- read_csv("data2/player_shifts.csv")
+# report <- read_csv("data2/report.csv")
+# roster <- read_csv("data2/roster_df.csv")
+# scratches <- read_csv("data2/scratches_df.csv")
 ```
 
 Variables needed to make model
@@ -73,11 +75,12 @@ data_pipeline_xG <- function(pbp){
   new_pbp <- bind_cols(new_pbp %>% dplyr::select("GF", "GA", "num_home_players", "num_away_players", "x", "y", "isgoal"), 
                        dummy_event_detail)
   return(new_pbp)
-  
 }
 test_pbp <- data_pipeline_xG(pbp_base)
 ```
 
+Drop players that have less than n shots or have played in less than m games and try and run the model
+or else use normalized values.
 
 ```{r}
 # apply(test_pbp, 2, function(x) any(is.na(x)))
@@ -86,22 +89,51 @@ test_pbp <- data_pipeline_xG(pbp_base)
 X <- test_pbp %>% dplyr::select(-"isgoal") %>% data.matrix(.)
 y <- test_pbp$isgoal
 
-model <- cv.glmnet(X, y, family="binomial", alpha=0)
+norm_X <- apply(X, 2, function(x){(x-mean(x))/sd(x)})
+
+if(file.exists("xG_model.rda")){
+  model <- read("xG_model.rda")
+} else{
+  model <- glmnet(norm_X, y, family="binomial", alpha=0, lambda=0.01)
+  save(model, file="xG_model.rda")
+}
 
 model_coef <- coef(model, s="lambda.min")
 model_coef_names <- model_coef@Dimnames[[1]][model_coef@i + 1]
 model_coef <- as_tibble(data.frame(name = model_coef_names, coefficient = model_coef@x))
-# ggplot(data=test_pbp %>% filter(shooterALEX.OVECHKIN == 1) , aes(x=x, y=y)) + coord_cartesian(xlim=c(0,100)) + 
-#   coord_cartesian(ylim=c(-42, 42)) + geom_density_2d_filled()
-# ggplot(data=test_pbp %>% filter(shooterTJ.BRODIE == 1) , aes(x=x, y=y)) + coord_cartesian(xlim=c(0,100)) + 
-#   coord_cartesian(ylim=c(-42, 42)) + geom_density_2d_filled()
 ```
 
 ```{r}
-test <- matrix(0, 42*2*100, 1023)
-test[c(3,4), ] <- 5
-# test[c(5,6), ] <- crossing(c(-42:42), c(0:100))
+xG_coeff_denisty_plot <- function(player_names, model_coef){
+  
+  y_plot_coords <- seq(1, 30, by = 30/length(player_names))
+  
+  xG_coff_plot <- model_coef %>% filter(str_detect(name, "shooter")) %>%
+      ggplot(data=., aes(x=coefficient)) + 
+      geom_density()
+  
+  for(i in c(1:length(player_names))){
+      player_coef <- model_coef %>% filter(name == player_names[i]) %>% pull(coefficient)
+      xG_coff_plot <- xG_coff_plot + 
+        geom_vline(xintercept = player_coef, col="red") +
+        annotate(geom="text", x=(player_coef), y=y_plot_coords[i], label=player_names[i], hjust=-0.01)
+  }
+  return(xG_coff_plot + theme_minimal())
+}
+
+player_name <- c("shooterJOHN.TAVARES", 
+                 "shooterALEX.OVECHKIN", 
+                 "shooterMITCH.MARNER", 
+                 "shooterWILLIAM.NYLANDER",
+                 "shooterCONNOR.MCDAVID")
+plt <- xG_coeff_denisty_plot(player_name, model_coef)
+plot(plt)
+# player_name <- "shooterJOHN.TAVARES"
+# player_coef <- model_coef %>% filter(name == player_name) %>% pull(coefficient)
+# model_coef %>% filter(str_detect(name, "shooter")) %>% arrange(desc(coefficient))
+# model_coef %>% filter(str_detect(name, "shooter")) %>%
+#   ggplot(data=., aes(x=coefficient)) + 
+#   geom_density() + geom_vline(xintercept = player_coef, col="red") +
+#   annotate(geom="text", x=player_coef, y=15, label=player_name, hjust=-0.01) +
+#   theme_minimal()
 ```
-
-
-

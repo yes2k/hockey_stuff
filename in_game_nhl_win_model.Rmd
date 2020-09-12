@@ -14,12 +14,11 @@ source("EH_scrape_functions.R")
 
 ## Modelling ingame nhl win probabilities
 
-I want to track the probability of the home team winning while the game is happening. To do this I will use Logstic regressiont to model Pr(Home team winning).
+I want to track the probability of the home team winning while the game is happening. To do this I will use Logstic regression to model the Probability of the home team winning
 
 ## Brief primer on Logistic Regresion
 
-Logistic regression is a statisical model that models binary variables, which makes it perfect for our problem since there are only 2 outcomes to 
-an NHL game (I am considering an OT loss to be a loss).
+Logistic regression is a statisical model that models binary variables, which makes it perfect for our problem since there are only 2 outcomes to an NHL game (I am considering an OT loss to be a loss).
 
 ## Downloading the Data
 ```{r message=FALSE}
