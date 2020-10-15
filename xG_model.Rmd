@@ -43,11 +43,9 @@ Variables needed to make model
 
 Proccessing data
 ```{r}
+# Takes pbp data from the scraper and transforms it
+# to be used by our xG_model
 data_pipeline_xG <- function(pbp){
-  # events_to_remove <- c("ANTHEM", "CHANGE", "CHL", "EGPID", 
-  #                       "EIEND", "EISTR", "GEND", "GOFF", 
-  #                       "PEND", "PGEND", "PGSTR", "PSTR", "STOP")
-  
   new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL")) %>%
                   mutate(GF = home_score,
                          GA = away_score,
@@ -139,9 +137,13 @@ model_coef %>% filter(str_detect(name, "goalie")) %>% arrange(coefficient)
 
 
 
-xG_Model 2
+## xG_Model 2
+An expected goal model that doesn't include player dummy variables
+
 
 ```{r}
+# Takes pbp data from the scraper and transforms it
+# to be used by our xG_model
 data_pipeline_xG_v2 <- function(pbp){
   new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL", "MISS")) %>%
                   mutate(GF = home_score,
@@ -213,6 +215,10 @@ ggplot(test_model, aes(x = goals, y = total_xG)) + geom_point()
 
 ```{r}
 # TODO: Adding score text
+
+# Takes some pbp_data (dataframe), an xG_model, xG_pipeline(function)
+# and game_info(dataframe) and returns a graph that show the cumulative 
+# xG from both teams
 xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
   shot_data <- xG_pipeline(pbp_data)
   preds <- predict(xG_model, newdata = shot_data, type = "response")
@@ -227,7 +233,7 @@ xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
   away_team <- game_info$away_team
   plot_data[home_team] <- cumsum(plot_data[home_team])
   plot_data[away_team] <- cumsum(plot_data[away_team])
-  plot_data <- plot_data %>% pivot_longer(cols=-c(game_seconds), values_to="xG")
+  plot_data <- plot_data %>% pivot_longer(cols=-c(game_seconds), values_to="Cumulative xG")
   
   return(ggplot(data = plot_data, aes(x=game_seconds, y=xG, col=name)) +
            geom_line() + 

@@ -14,7 +14,7 @@ source("EH_scrape_functions.R")
 
 ## Modelling ingame nhl win probabilities
 
-I want to track the probability of the home team winning while the game is happening. To do this I will use Logstic regression to model the Probability of the home team winning
+I want to track the probability of the home team winning while the game is happening. To do this I will use logstic regression to model the probability of the home team winning
 
 ## Brief primer on Logistic Regresion
 
@@ -22,19 +22,27 @@ Logistic regression is a statisical model that models binary variables, which ma
 
 ## Downloading the Data
 ```{r message=FALSE}
-events_summary <- read_csv("data/events_summary_df.csv")
-game_info <- read_csv("data/game_info_df.csv")
-pbp_base <- read_csv("data/pbp_base.csv")
-pbp_extras <- read_csv("data/pbp_extras.csv")
-player_periods <- read_csv("data/player_periods.csv")
-player_shifts <- read_csv("data/player_shifts.csv")
-report <- read_csv("data/report.csv")
-roster <- read_csv("data/roster_df.csv")
-scratches <- read_csv("data/scratches_df.csv")
+# events_summary <- read_csv("data/events_summary_df.csv")
+# game_info <- read_csv("data/game_info_df.csv")
+# pbp_base <- read_csv("data/pbp_base.csv")
+# pbp_extras <- read_csv("data/pbp_extras.csv")
+# player_periods <- read_csv("data/player_periods.csv")
+# player_shifts <- read_csv("data/player_shifts.csv")
+# report <- read_csv("data/report.csv")
+# roster <- read_csv("data/roster_df.csv")
+# scratches <- read_csv("data/scratches_df.csv")
+con <- dbConnect(RSQLite::SQLite(), dbname = "hockey_data.db")
+
+pbp_base <- dbGetQuery(conn = con, 'select * 
+                                    from pbp_base
+                                    where game_id > 2014010001;') %>% as_tibble(.)
+game_info <- dbGetQuery(conn = con, 'select * 
+                                    from game_info
+                                    where game_id > 2014010001;') %>% as_tibble(.)
+dbDisconnect(con)
 ```
 
-The data was collected using Evolving Hockey's scraper (put link to Evolving Hockey's scraper github)
-
+The data was collected using Evolving Hockey's scraper https://github.com/evolvingwild/evolving-hockey. The data we will be using is pbp_base. This data contains time stamps and details about various events such as shots, goals, penalties, etc. We will be using this data to build our model
 
 ## Creating the model
 
@@ -46,27 +54,8 @@ Taking the raw data, we have to transform it to extract the variables of interes
 * number of away players on the ice
 * number of home players on the ice
 
-
-What sort of data are we going to need to?
-  seconds into the game
-  home strength state (num players home - num players away)
-  
-  -Not needed
-  event type (dummy variables), should also indicate if it's home or away event type 
-    goal
-    blocked shot
-    shot (xG might be a better indicator)
-    giveaway
-    takeaway
-    faceoff
-    
-  home and away players on ice (dummy var)
-  teams (dummy var)
-  
-  
+The function below takes the play-by-play (pbp) data and extracts the relevant variable defined above and returns a dataframe
 ```{r}
-# view(new_pbp %>% filter(game_id == gid))
-
 data_pipeline <- function(pbp){
   cols_to_select <- c("game_id", "game_seconds","home_team", "away_team",
                       "home_score", "away_score", "game_strength_state", "event_type")
@@ -76,25 +65,18 @@ data_pipeline <- function(pbp){
   new_pbp <- pbp %>% 
               filter(game_seconds > 0 & !event_type %in% events_to_remove) %>% 
               dplyr::select(all_of(cols_to_select)) %>%
-              mutate(GF = home_score) %>%
-              mutate(GA = away_score) %>%
-              mutate(num_home_players = str_extract(game_strength_state, "^.")) %>%
-              mutate(num_away_players = str_extract(game_strength_state, ".$")) %>%
-              mutate(num_home_players = ifelse(num_home_players == "E", 
-                                               ifelse(game_seconds < 3600, "5", "3"), 
-                                               num_home_players)) %>%
-              mutate(num_away_players = ifelse(num_away_players == "E", 
-                                               ifelse(game_seconds < 3600, "5", "3"),
-                                               num_away_players)) %>%
-              mutate(num_home_players = as.numeric(num_home_players)) %>%
-              mutate(num_away_players = as.numeric(num_away_players))
-  # dmy1 <- dummyVars("~home_team", data=new_pbp, fullRank = F)
-  # dmy2 <- dummyVars("~away_team", data=new_pbp, fullRank = F)
-  # 
-  # home_team_dummy <- as_tibble(predict(dmy1, new_pbp))
-  # away_team_dummy <- as_tibble(predict(dmy2, new_pbp))
-  # 
-  # new_pbp <- bind_cols(new_pbp, home_team_dummy, away_team_dummy)
+              mutate(GF = home_score,
+                    GA = away_score,
+                    num_home_players = str_extract(game_strength_state, "^."),
+                    num_away_players = str_extract(game_strength_state, ".$"),
+                    num_home_players = ifelse(num_home_players == "E", 
+                                                     ifelse(game_seconds < 3600, "5", "3"), 
+                                                     num_home_players),
+                    num_away_players = ifelse(num_away_players == "E", 
+                                                     ifelse(game_seconds < 3600, "5", "3"),
+                                                     num_away_players),
+                    num_home_players = as.numeric(num_home_players),
+                    num_away_players = as.numeric(num_away_players))
   
   new_pbp <- new_pbp %>% dplyr::select(-c("home_team", "away_team", 
                                           "event_type", "game_strength_state",
@@ -103,7 +85,6 @@ data_pipeline <- function(pbp){
 }
 
 new_pbp <- data_pipeline(pbp_base)
-new_pbp %>% filter(game_id == "2018020001")
 ```
 
 ## Logistic Regression Model
@@ -117,26 +98,22 @@ summary(model)
 saveRDS(model, "ingame_win_prob_model.RDS")
 ```
 
-## RT Odds graph for Logistic Regression
+## RT Odds/Probability graph for Logistic Regression
 ```{r}
 rt_odds_graph <- function(model, pbp, game_info){
   new_pbp <- data_pipeline(pbp)
   odds_home_team_winning <- exp(predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id"))))
-  # prob_home_team_winging <- predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id")), type="response")
   new_pbp <- cbind(new_pbp, odds_home_team_winning)
-  print(new_pbp)
   ggplot(new_pbp, aes(x=game_seconds, y=odds_home_team_winning)) + 
     geom_line() + ggtitle(paste("In Game Odds Tracker ", game_info$away_team, " @ ", 
                                 game_info$home_team, ", ", game_info$game_date, sep="")) +
     theme(plot.title = element_text(hjust = 0.5))
-
 }
 
 rt_probs_graph <- function(model, pbp, game_info){
   new_pbp <- data_pipeline(pbp)
   prob_home_team_winging <- predict(model, newdata = new_pbp %>% dplyr::select(-c("game_id")), type="response")
   new_pbp <- cbind(new_pbp, prob_home_team_winging)
-  print(new_pbp)
   ggplot(new_pbp, aes(x=game_seconds, y=prob_home_team_winging)) + 
     geom_line() + ggtitle(paste("In Game Win Probability Tracker ", game_info$away_team, " @ ", 
                                 game_info$home_team, ", ", game_info$game_date, sep="")) +
@@ -144,19 +121,8 @@ rt_probs_graph <- function(model, pbp, game_info){
 }
 gid <- "2018020005"
 df2 <- sc.scrape_pbp(games = c("2019030054"))
-# rt_odds_graph(model, pbp_base %>% dplyr::filter(game_id == gid), game_info %>% dplyr::filter(game_id == gid))
 rt_odds_graph(model, df2$pbp_base, df2$game_info_df)
 rt_probs_graph(model, df2$pbp_base, df2$game_info_df)
-```
-
-
-
-```{r}
-sched <- sc.scrape_schedule(start_date = Sys.Date()-20, end_date=Sys.Date()) %>% filter(away_team == "FLA" | home_team == "FLA")
-sched
-
-df3 <- sc.scrape_pbp(games=c("2019030044"))
-rt_probs_graph(model, df3$pbp_base, df3$game_info)
 ```
 
 
