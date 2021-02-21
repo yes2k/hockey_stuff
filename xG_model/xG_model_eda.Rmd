@@ -1,0 +1,79 @@
+---
+title: "xG_model_EDA"
+author: "Yatharth Khattar"
+date: "18/02/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the Library
+```{r}
+library(tidyverse)
+library(precrec)
+```
+
+## Getting our test data and model
+```{r}
+xg_log_reg_model <- readRDS("xg_log_reg_model.RDS")
+test <- read_csv("test.csv")
+```
+
+###
+```{r}
+preds <- predict(xg_log_reg_model, newdata=test %>% 
+                   select(-c("game_id", "isgoal",
+                             "game_seconds", "event_team",
+                             "goalie")),
+                 type="response")
+log_loss <- sum(test$isgoal*log(preds) + (1-test$isgoal)*log(1-preds))
+log_loss
+```
+
+```{r}
+precrec_obj <- evalmod(scores = preds, labels = test$isgoal)
+autoplot(precrec_obj)
+```
+
+```{r}
+# Takes some pbp_data (dataframe), an xG_model, xG_pipeline(function)
+# and game_info(dataframe) and returns a graph that show the cumulative 
+# xG from both teams
+xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
+  shot_data <- xG_pipeline(pbp_data)
+  preds <- predict(xG_model, newdata = shot_data, type = "response")
+  xG_data <- cbind(xG = preds, shot_data) %>% as_tibble(.)
+  plot_data <- xG_data %>% 
+    dplyr::select("xG", "game_seconds", "event_team") %>% 
+    mutate(row = row_number()) %>%
+    pivot_wider(names_from = event_team, values_from = xG) %>%
+    replace(is.na(.), 0) %>% dplyr::select(-row)
+  
+  home_team <- game_info$home_team
+  away_team <- game_info$away_team
+  plot_data[home_team] <- cumsum(plot_data[home_team])
+  plot_data[away_team] <- cumsum(plot_data[away_team])
+  plot_data <- plot_data %>% pivot_longer(cols=-c(game_seconds), values_to="Cumulative xG")
+
+  return(ggplot(data = plot_data, aes(x=game_seconds, y=`Cumulative xG`, col=name)) +
+           geom_line() + 
+           ggtitle(paste("Cumulative xG ", game_info$away_team, " @ ", 
+                  game_info$home_team, ", ", game_info$game_date %>% 
+                  as.Date.numeric(., origin = "1970-01-01"), sep="")) + 
+           # geom_hline(yintercept = game_info$home_score) +
+           # geom_hline(yintercept = game_info$away_score) + 
+           theme(plot.title = element_text(hjust = 0.5)))
+}
+
+gid <- "2016020105"
+graph <- xG_graph(pbp_base %>% filter(game_id == gid),
+                  log_model,
+                  data_pipeline_xG_v2,
+                  game_info %>% filter(game_id == gid)
+                  )
+
+plot(graph)
+```
+
