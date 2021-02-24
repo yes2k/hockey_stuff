@@ -5,6 +5,12 @@ date: "20/02/2021"
 output: html_document
 ---
 
+```{r message=FALSE}
+library(tidyverse)
+library(reshape2)
+```
+
+
 ```{r}
 gid <- 2017020265
 sub_pbp <- pbp_data %>% filter(game_id == gid)
@@ -19,29 +25,49 @@ sub_player_shifts <- sub_player_shifts %>%
 
 
 ```{r}
+c("CHANGE", "BLOCK", "GOAL", "MISS", "SHOT")
 gid <- 2017020265
+
+shift_data <- pbp_data %>% filter(game_id == gid) %>% 
+                filter(event_type == "CHANGE") %>% 
+                mutate(is_home_team_event = if_else(event_team == home_team, 
+                                                    1, 0)) %>% 
+                select(game_id, game_seconds, event_team, 
+                       paste0("away_on_", 1:7), paste0("home_on_", 1:7), 
+                       is_home_team_event, home_goalie, away_goalie, 
+                       home_team, away_team) %>% 
+                group_by(game_seconds) %>% 
+                slice(n()) %>% 
+                ungroup(game_seconds) %>% 
+                mutate(shift_start = game_seconds,
+                       shift_end = lead(game_seconds)) %>%   
+                head(-1) %>% 
+                mutate(across(c(home_on_1:home_on_7, away_on_1:away_on_7), 
+                              function(x){
+                                          ifelse(x==home_goalie, NA, 
+                                          ifelse(x==away_goalie, NA, x))})) 
+
+shift_data[c("shift_start", "shift_end")]
+
 pbp_data %>% filter(game_id == gid) %>% 
-  filter(event_type == "CHANGE") %>% 
-  mutate(is_home_team_event = if_else(event_team == home_team, 
-                                      1, 0)) %>% 
-  select(game_id, game_seconds, event_team, 
-         paste0("away_on_", 1:7), paste0("home_on_", 1:7), 
-         is_home_team_event, home_goalie, away_goalie) %>% 
-  group_by(game_seconds) %>% 
-  slice(n()) %>% 
-  ungroup(game_seconds) %>% 
-  mutate(shift_start = game_seconds,
-         shift_end = lead(game_seconds)) %>%   
-  head(-1) %>% 
-  mutate(across(home_on_1:home_on_7, function(x){ifelse(x==home_goalie, NA, 
-                                                 ifelse(x==away_goalie, NA, x))})) %>% 
-  mutate(across(away_on_1:away_on_7, function(x){ifelse(x==home_goalie, NA, 
-                                                 ifelse(x==away_goalie, NA, x))}))
-  recast(game_seconds~away_on_1+)
-  
-  # unite("players_on_the_ice", away_on_1:home_on_7, na.rm = TRUE, remove = TRUE, sep=",") %>% 
-  # select(game_id, shift_start, shift_end, players_on_the_ice) %>% 
-  # dplyr::mutate(players_on_the_ice = stringr::str_replace_all(players_on_the_ice, 'NA,?', '')) %>% 
-  # tidyr::separate(players_on_the_ice, into=paste0("player"), sep=",")
+  filter(event_type %in% c("BLOCK", "GOAL", "MISS", "SHOT")) %>% 
+  dplyr::select(game_seconds, event_team, event_type)
+
+
+# %>% 
+#   dplyr::select(away_on_1:away_on_7,home_on_1:home_on_7, 
+#                 shift_start, shift_end, home_team, away_team) %>% 
+#   melt(id=c("shift_start", "shift_end", "home_team", "away_team")) %>%
+#   dcast(home_team+away_team+shift_start+shift_end~value, length)
 ```
+
+
+
+
+
+
+
+
+
+
 

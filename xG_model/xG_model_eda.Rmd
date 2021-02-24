@@ -10,7 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Loading the Library
-```{r}
+```{r message=FALSE}
+library(tidyverse)
+library(RCurl)
+library(xml2) 
+library(rvest)
+library(jsonlite)
+library(foreach)
+library(lubridate)
 library(tidyverse)
 library(precrec)
 ```
@@ -38,11 +45,23 @@ autoplot(precrec_obj)
 ```
 
 ```{r}
-# Takes some pbp_data (dataframe), an xG_model, xG_pipeline(function)
-# and game_info(dataframe) and returns a graph that show the cumulative 
-# xG from both teams
-xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
-  shot_data <- xG_pipeline(pbp_data)
+todays_schedule <- sc.scrape_schedule(print_sched = FALSE)
+```
+
+
+```{r}
+# Takes some a gid (game id for a nhl game), an xG_model, 
+# xG_pipeline (function) and returns a graph that show the 
+# cumulative xG from both teams
+xG_graph <- function(gid, xG_model, xG_pipeline) {
+  
+  game_data <- sc.scrape_pbp(as.character(gid))
+  
+  shot_data <- xG_pipeline(game_data$pbp_base)
+  game_info <- game_data$game_info
+  
+  print( game_info$game_date)
+  
   preds <- predict(xG_model, newdata = shot_data, type = "response")
   xG_data <- cbind(xG = preds, shot_data) %>% as_tibble(.)
   plot_data <- xG_data %>% 
@@ -55,25 +74,20 @@ xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
   away_team <- game_info$away_team
   plot_data[home_team] <- cumsum(plot_data[home_team])
   plot_data[away_team] <- cumsum(plot_data[away_team])
-  plot_data <- plot_data %>% pivot_longer(cols=-c(game_seconds), values_to="Cumulative xG")
+  plot_data <- plot_data %>% 
+    pivot_longer(cols=-c(game_seconds), values_to="Cumulative xG")
 
   return(ggplot(data = plot_data, aes(x=game_seconds, y=`Cumulative xG`, col=name)) +
            geom_line() + 
            ggtitle(paste("Cumulative xG ", game_info$away_team, " @ ", 
-                  game_info$home_team, ", ", game_info$game_date %>% 
-                  as.Date.numeric(., origin = "1970-01-01"), sep="")) + 
+                  game_info$home_team, ", ", game_info$game_date, sep="")) + 
            # geom_hline(yintercept = game_info$home_score) +
            # geom_hline(yintercept = game_info$away_score) + 
            theme(plot.title = element_text(hjust = 0.5)))
 }
 
-gid <- "2016020105"
-graph <- xG_graph(pbp_base %>% filter(game_id == gid),
-                  log_model,
-                  data_pipeline_xG_v2,
-                  game_info %>% filter(game_id == gid)
-                  )
-
+gid <- todays_schedule$game_id[1]
+graph <- xG_graph(gid, xg_log_reg_model, data_pipeline_xG)
 plot(graph)
 ```
 

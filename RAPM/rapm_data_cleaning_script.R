@@ -3,7 +3,7 @@ library(lubridate)
 library(reshape2)
 source("xG_model/EH_scrape_functions.R")
 source("data/loading_data_script.R")
-download_hockey_data()
+# download_hockey_data()
 path_to_data <- "data"
 
 pbp_data <- read_csv(paste0(path_to_data, "/pbp_base.csv"))
