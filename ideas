@@ -1,0 +1,12 @@
+- xG pressure rates, graphs that plot xG/60 throughout the game
+    - Maybe test if goals are scored during times in high
+    - pressure areas
+
+- How does regular season performance affect playoff performance
+    - maybe compare standings to how far a team goes into the playoffs
+    - look at last n games of the season and see if it affects how far a team
+        goes
+
+- For RAPM the each player has a dummy variable for offense and defence, to measure their impact on the metric both offensivly and defensivly. So for each shift, there are two entries, 1 where the home team are offensive and away team are defensive and the other is vice versa.
+
+ 

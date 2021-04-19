@@ -7,29 +7,11 @@ output: html_document
 
 ```{r message=FALSE}
 library(tidyverse)
-library(reshape2)
 ```
 
-
 ```{r}
-gid <- 2017020265
-sub_pbp <- pbp_data %>% filter(game_id == gid)
-sub_player_shifts <- player_shifts %>% filter(game_id == gid)
-sub_pbp <- sub_pbp %>% 
-  filter(event_type %in% c("SHOT", "BLOCK", "")) %>% 
-  select(game_seconds, home_on_1, event_type, event_detail, ) 
-sub_player_shifts <- sub_player_shifts %>% 
-                      filter(position != "G") %>% 
-                      select(seconds_start, seconds_end, player, is_home) 
-```
-
-
-```{r}
-c("CHANGE", "BLOCK", "GOAL", "MISS", "SHOT")
-gid <- 2017020265
-
-shift_data <- pbp_data %>% filter(game_id == gid) %>% 
-                filter(event_type == "CHANGE") %>% 
+get_rapm_data_per_game <- function(pbp){
+  shift_data <- pbp %>% filter(event_type == "CHANGE") %>% 
                 mutate(is_home_team_event = if_else(event_team == home_team, 
                                                     1, 0)) %>% 
                 select(game_id, game_seconds, event_team, 
@@ -47,20 +29,57 @@ shift_data <- pbp_data %>% filter(game_id == gid) %>%
                                           ifelse(x==home_goalie, NA, 
                                           ifelse(x==away_goalie, NA, x))})) 
 
-shift_data[c("shift_start", "shift_end")]
+  shift_times <- shift_data[c("shift_start", "shift_end")]
+  
+  shot_type <- c("BLOCK", "GOAL", "MISS", "SHOT")
+  shot_data  <- pbp %>% filter(event_type %in% shot_type) %>% 
+                  dplyr::select(game_seconds, event_team, event_type, home_team,
+                                away_team) %>% 
+                  mutate(is_home_team = if_else(event_team == home_team, 1, 0))
+  
+  home_team_shot_times <- shot_data %>% 
+                          filter(is_home_team == 1) %>% 
+                          pull(game_seconds)
+    
+  away_team_shot_times <- shot_data %>% 
+                          filter(is_home_team == 0) %>% 
+                          pull(game_seconds)
+  
+  final_shift_data <- apply(shift_times, 1, function(x){
+    home_team_shot <- sum(x[["shift_start"]] <= home_team_shot_times &
+                          home_team_shot_times < x[["shift_end"]])
+    away_team_shot <- sum(x[["shift_start"]] <= away_team_shot_times &
+                          away_team_shot_times < x[["shift_end"]])
+    return(tibble(home_team_shots = home_team_shot, 
+                  away_team_shots = away_team_shot))
+  }) %>% bind_rows(.) %>% bind_cols(., shift_data) %>% 
+    mutate(home_team_shots_per_60 = (home_team_shots/(shift_end - shift_start))*3600,
+           away_team_shots_per_60 = (away_team_shots/(shift_end - shift_start))*3600) 
+  
+  # TODO: Double each row and make columns for offensive players and defensive players
+  #       and also create a dummy variable that is 1 if home team == offensive team
+  
+  # %>% 
+  #   pmap_df(function(...){
+  #     arg <- list(...)
+  #     new_dat <- tibble(game_id=numeric(), shift_start=numeric(), shift_end=numeric(), 
+  #            shots_per_60=numeric(), offensive_player_1=character(), 
+  #            offensive_player_2=character(), offensive_player_3=character(), 
+  #            offensive_player_4=character(), offensive_player_5=character(), 
+  #            offensive_player_6=character(),  offensive_player_7=character(),
+  #            defensive_player_1=character(), defensive_player_2=character(), 
+  #            defensive_player_3=character(), defensive_player_4=character(), 
+  #            defensive_player_5=character(), defensive_player_6=character(), 
+  #            defensive_player_7=character(), is_home_team = numeric())
+  #     new_dat$game_id <- rep(arg$game_id, 2)
+  #     
+  #   })
+}
 
-pbp_data %>% filter(game_id == gid) %>% 
-  filter(event_type %in% c("BLOCK", "GOAL", "MISS", "SHOT")) %>% 
-  dplyr::select(game_seconds, event_team, event_type)
-
-
-# %>% 
-#   dplyr::select(away_on_1:away_on_7,home_on_1:home_on_7, 
-#                 shift_start, shift_end, home_team, away_team) %>% 
-#   melt(id=c("shift_start", "shift_end", "home_team", "away_team")) %>%
-#   dcast(home_team+away_team+shift_start+shift_end~value, length)
+gid <- 2017020265
+v <- get_rapm_data_per_game(pbp_data %>% filter(game_id == gid))
+view(v)
 ```
-
 
 
 
