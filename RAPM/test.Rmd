@@ -9,7 +9,9 @@ output: html_document
 library(tidyverse)
 library(caret)
 library(data.table)
+library(dtplyr)
 pbp_data <- read_csv("../data/pbp_base.csv")
+sub_pbp <- pbp_data %>% filter(season == 20182019)
 ```
 
 ```{r}
@@ -28,7 +30,7 @@ new_names2 <- c(paste0("off_player_", 1:7), paste0("def_player_", 1:7),
                 "shots_per_60", "game_id")
 
 get_rapm_data_per_game <- function(pbp){
-  # splitting the data so that each row is a single shift where no on leaves the ice
+    # splitting the data so that each row is a single shift where no on leaves the ice
   shift_data <- pbp %>% filter(event_type == "CHANGE") %>% 
                 mutate(is_home_team_event = if_else(event_team == home_team, 
                                                     1, 0)) %>% 
@@ -91,10 +93,23 @@ get_rapm_data_per_game <- function(pbp){
   bind_rows(home_team_data, away_team_data) %>% mutate(id=1:n()) %>%
     arrange(shift_start)
 }
+# 
+# gid <- 2017020265
+# v <- get_rapm_data_per_game(pbp_data %>% filter(game_id == gid))
 
-gid <- 2017020265
-v <- get_rapm_data_per_game(pbp_data %>% filter(game_id == gid))
+sub_pbp2 <- lazy_dt(sub_pbp)
 
+d <- sub_pbp2 %>% group_by(game_id) %>%
+     group_map(function(x){get_rapm_data_per_game(x)}, keep=TRUE) %>% 
+     as_tibble()
+
+# d <- sub_pbp %>% group_by(game_id) %>% 
+#       nest() %>% 
+#       mutate(out = purrr::map(., function(x) get_rapm_data_per_game(x))) %>% 
+#       unnest(out)
+```
+
+```{r}
 # Multi hot encoding the player variables
 off_dummy <- v %>% dplyr::select(c(paste0("off_player_", 1:7), "id", "game_id")) %>% setDT()
 off_dummy <- dcast(setDT(melt(off_dummy,id.vars = c("id", "game_id")))[,ind:=1], id+game_id~value, 
@@ -115,6 +130,8 @@ colnames(def_dummy) <- c("id", "game_id", paste0("def_",colnames(def_dummy)[3:le
 final_data <- bind_cols(off_dummy %>% dplyr::select(-c("id", "game_id")), def_dummy, 
           v %>% dplyr::select(home_team, away_team, shift_start, 
                               shift_end, shots_per_60,off_is_home,))
+
+final_data
 ```
 
 
