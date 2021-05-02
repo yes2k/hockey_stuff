@@ -6,10 +6,9 @@ source("data/loading_data_script.R")
 download_hockey_data()
 path_to_data <- "data"
 
+# Takes pbp data from the scraper and transforms
+# to be used by our xG Model
 data_pipeline_xG <- function(pbp){
-  # Takes pbp data from the scraper and transforms
-  # to be used by our xG Model
-  
   new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL", "MISS")) %>%
     mutate(GF = home_score,
            GA = away_score,
@@ -29,6 +28,7 @@ data_pipeline_xG <- function(pbp){
            x = abs(coords_x),
            shot_distance = sqrt((89-x)^2 + y^2),
            shot_angle = atan2(abs(y), abs(89-x)),
+           is_home_team = if_else(event_team == home_team, 1, 0),
            seconds_since_last_shot = game_seconds - lag(game_seconds),
            is_backhand = 1*(event_detail == "Backhand"),
            is_deflected = 1*(event_detail == "Deflected"),
@@ -44,17 +44,23 @@ data_pipeline_xG <- function(pbp){
                   "shot_angle", "seconds_since_last_shot",
                   "event_team", "is_backhand", "is_slap",
                   "is_snap", "is_tipin", "is_wraparound", 
-                  "is_wrist") %>% drop_na()
+                  "is_wrist", "is_home_team") %>% drop_na()
   return(new_pbp)   
 }
 
-pbp_data <- read_csv(paste(path_to_data, "/pbp_base.csv", sep=""))
 
-cleaned_data <- data_pipeline_xG(pbp_data)
+train_test_split <- function(){
+  if(!exists("pbp_data")){
+    pbp_data <- read_csv(paste(path_to_data, "/pbp_base.csv", sep=""))
+  }
+  cleaned_data <- data_pipeline_xG(pbp_data)
+  
+  nsplit <- round(nrow(cleaned_data)*0.8)
+  write_csv(cleaned_data %>% slice(1:nsplit), "xG_model/train.csv")
+  write_csv(cleaned_data %>% slice((nsplit+1):n()), "xG_model/test.csv")
+}
 
-nsplit <- round(nrow(cleaned_data)*0.8)
-write_csv(cleaned_data %>% slice(1:nsplit), "xG_model/train.csv")
-write_csv(cleaned_data %>% slice((nsplit+1):n()), "xG_model/test.csv")
+
 
 
 
