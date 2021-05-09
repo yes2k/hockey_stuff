@@ -171,4 +171,7 @@ final_data <- bind_cols(off_dummy %>% dplyr::select(-c("id", "game_id")), def_du
                                             shift_end, shots_per_60, off_is_home, xg_per_60))
 
 # ====================== Writing the data ===========================
-write_csv(final_data, "final_data.csv")
+saveRDS(final_data, "RAPM/final_data.RDS")
+
+# removing unnesesary variables
+rm("final_data", "off_dummy", "def_dummy", "d", "final_data")
