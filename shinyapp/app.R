@@ -20,10 +20,16 @@ ui <- fluidPage(
   # Main panel for displaying outputs ----
   mainPanel(
     tabsetPanel(type="tabs",
-                tabPanel("Cumulative xG plot", 
-                         plotOutput("xg_plot") %>% withSpinner()),
+                tabPanel("Cumulative xG plot",
+                         textOutput("xg_plot_warning_text"),
+                         plotOutput("xg_plot") %>% withSpinner()
+                         # uiOutput("xg_plot")
+                         ),
                 tabPanel("Win Probability Plot", 
-                         plotOutput("prob_graph") %>% withSpinner())
+                         textOutput("prob_graph_warning_text"),
+                         plotOutput("prob_graph") %>% withSpinner()
+                         # uiOutput("prob_graph")
+                         )
                 )
   )
 )
@@ -45,8 +51,40 @@ server <- function(input, output){
         btn_id <- paste0("game_selection_button_", game_id)
         if(is.null(obsList[[btn_id]])){
           obsList[[btn_id]] <<- observeEvent(input[[btn_id]],{
-            output$xg_plot <- renderPlot({xG_graph(game_id)})
-            output$prob_graph <- renderPlot({rt_probs_graph_for_id(game_id)})
+            
+            xg_plot_out <- tryCatch(
+              {
+                p_xg <- xG_graph(game_id)
+                # p
+                output$xg_plot <- renderPlot(p_xg)
+                output$xg_plot_warning_text <- renderText("")
+              },
+              error=function(cond){
+                output$xg_plot_warning_text <- renderText("Game Not Avaliable")
+                output$xg_plot <- renderPlot({plot.new()})
+                print("error")
+              },
+              warning=function(cond){
+                print("warning")
+              }
+            )
+            
+            prob_graph_out <- tryCatch(
+              {
+                p_prob <- rt_probs_graph_for_id(game_id)
+                # p
+                output$prob_graph <- renderPlot(p_prob)
+                output$prob_graph_warning_text <- renderText("")
+              },
+              error=function(cond){
+                output$prob_graph_warning_text <- renderText("Game Not Avaliable")
+                output$prob_graph <- renderPlot({plot.new()})
+                print("error")
+              },
+              warning=function(cond){
+                print("warning")
+              }
+            )
           })
           actionButton(btn_id, paste(away_team, "@", home_team))
         }
