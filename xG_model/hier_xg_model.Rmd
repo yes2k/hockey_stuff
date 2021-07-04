@@ -33,34 +33,19 @@ Mixed Effect Model, hierarchical model, multilevel models, they go by many names
 
 I have elected to model this from a Bayesian perspective. I find mixed effect models make more sense from this perspective and can be more numerically stable.
 
-Since our data is also binary, we will be using a logistic mixed model which can be defined as follows:
+Since our data is also binary, we will be using a logistic mixed model which can be defined as follows using lme4 notation:
 
-$$ \text{isgoal}_i \thicksim \text{Bernoulli}(p_i)$$
+`isgoal ~ x + y + shot_distance + shot_angle + seconds_since_last_shot + (1|goalie) + (1|shooter) + (1|event_detail) + (1|score_state) + (1|game_strength_state)`
 
-$$
-\begin{multline*}
-\text{logit} \  p_i = \beta_0 + \beta_1 x_i + \beta_2 y_i + \beta_3\text{shot_distance}_i + \beta_4\text{shot_angle}_i + \\
-\beta_5\text{seconds_since_last_shot}_i + \text{shooter}_i + \text{goalie}_i + \\ \text{event_detail}_i + \text{score_state}_i + \text{game_strength_state}_i 
-\end{multline*}
-$$
-
-Since this is a Bayesian model, we need priors
-$$
-\beta_0, ..., \beta_{5} \thicksim \mathcal{N}(0, 1)
-$$
-
-The random effects will each have a $\mathcal{N}(0, \sigma)$ distribution and the prior for the $\sigma$ will be _________.
-
-
-The random effects in our model are the shooter, goalie, event_detail (the type of shot), the score state and the game strength state.
+Since this is a Bayesian model, we need priors. On the fixed effects, we put a $ \mathcal{N}(0, 1)$ prior and the random effects will each have a $\mathcal{N}(0, \sigma)$ distribution and the prior for the $\sigma$ will be _________.
 
 # INLA
 
-
+The most common way to perform Bayesian inference is to use a library to perform MCMC like Stan but since our we have a lot of data, doing MCMC would take a very long time. We can take an alternative and use a method called Integrated Nested Laplace Approximation (INLA). 
 
 # Putting it all together
 
-
+To start with, we take the play by play data and we filter all the rows that are shots and select the variables we are interested. We put all this in a function which will help when we apply our model to different seasons.
 
 ```{r}
 data_pipeline_inla_xG <- function(pbp){
@@ -101,17 +86,25 @@ data_pipeline_inla_xG <- function(pbp){
                   "shooter", "goalie", "shot_distance",
                   "shot_angle", "seconds_since_last_shot",
                   "event_team", "is_home_team", "event_detail",
-                  "game_strength_state", "score_state", "game_seconds") %>% drop_na()
+                  "game_strength_state", "score_state", "game_seconds") %>% 
+    drop_na() %>%
+    mutate(shooter = ifelse(Encoding(shooter) != "unknown", enc2native(shooter),
+                          shooter),
+           shooter_id = vctrs::vec_group_id(shooter),
+           goalie_id = vctrs::vec_group_id(goalie),
+           event_detail_id = vctrs::vec_group_id(event_detail),
+           score_state_id = vctrs::vec_group_id(score_state))
+    
+      
   return(new_pbp)
 }
-xg_data <- data_pipeline_inla_xG(sub_pbp) %>%
-  mutate(shooter = ifelse(Encoding(shooter) != "unknown", enc2native(shooter),
-                          shooter))
+xg_data <- data_pipeline_inla_xG(sub_pbp) 
 
-xg_data
+xg_data$shooter %>% vctrs::vec_group_id()
 ```
 
 ```{r}
+# INLA model
 prior_random <- list(prec = list(prior = "normal", param = c(0, 1)))
 prior_fixed <- list(mean.intercept = 0, prec.intercept = 1,
                     mean = list(x = 0, y = 0, shot_distance = 0,
@@ -133,6 +126,16 @@ inla_xg <- inla(f, data=xg_data,
                 control.compute = list(config=TRUE))
 summary(inla_xg)
 ```
+
+
+```{r}
+# Stan model
+players <- xg_data %>% pull(shooter)
+
+```
+
+
+
 
 ```{r}
 posterior <- function(n_samples, inla_model){
