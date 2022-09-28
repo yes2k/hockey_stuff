@@ -1,0 +1,42 @@
+---
+title: "win prob"
+format: html
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+d1 <- read_csv("points_2018_2019.csv")
+d2 <- read_csv("points_2019_2020.csv")
+d3 <- read_csv("points_2020_2021.csv")
+d4 <- read_csv("points_2021_2022.csv")
+
+
+d1$season <- "2018_2019"
+d2$season <- "2019_2020"
+d3$season <- "2020_2021"
+d4$season <- "2021_2022"
+
+dat <- bind_rows(d1 |> arrange("Team"), 
+                 d2 |> arrange("Team"),
+                 d3 |> arrange("Team"),
+                 d4 |> arrange("Team")) |> 
+  select("Team", "Points", "season")
+
+
+dat |> pivot_wider(names_from = season, values_from = Points)
+```
+
+
+
+
+
+
+
+
+
+
+
+
