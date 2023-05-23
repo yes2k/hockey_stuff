@@ -6,3 +6,5 @@ website/node_modules/*
 data/*
 data2/*
 *.csv
+/data_loading_scripts/data/*
+*.DS_Store

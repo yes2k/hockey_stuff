@@ -1,0 +1,97 @@
+---
+title: "Win Probability Model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Create a dataframe with each row being a single nhl game, the outcome variable is an indicator variable that is 1 if the home team wins the game and 0 if the away team wins. The variables are
+
+5v5 shots for rate, home team (over the last n games)
+5v5 shots against rate, home team (over the last n games)
+5v5 shots for rate, away team (over the last n games)
+5v5 shots against rate, away team (over the last n games)
+
+5v5 save percentage, home team (over the last n games)
+5v5 save percentage, away team (over the last n games)
+
+5v4 shots for rate, home team (over last n games)
+5v4 shots for rate, away team (over last n games)
+
+4v5 shots against rate, home team (over last n games)
+4v5 shots against rate, away team (over last n games)
+
+5v5 shooting %, home team (over last n games)
+5v5 shooting %, away team (over last n games)
+
+Indicator for home ice
+
+days rest, home team
+days rest, away team
+
+Somehow include player talent into the model
+
+Use a baseline model, which is home team always wins
+
+```{r}
+library(tidyverse)
+events_summary <- read_csv("../data/events_summary_df.csv")
+game_info <- read_csv("../data/game_info_df.csv")
+pbp_base <- read_csv("../data/pbp_base.csv")
+pbp_extras <- read_csv("../data/pbp_extras.csv")
+player_periods <- read_csv("../data/player_periods.csv")
+player_shifts <- read_csv("../data/player_shifts.csv")
+report <- read_csv("../data/report.csv")
+roster <- read_csv("../data/roster_df.csv")
+scratches <- read_csv("../data/scratches_df.csv")
+```
+
+```{r}
+# Gets 5v5, 5v4, 4v5 shots for per 60 for and shooting % for the home and away team
+# Takes a dataframe which is the play-by-play data for a single game, scraped by Evolving Hockey's data scraper
+shot_data_pipeline <- function(pbp){
+  pbp %>% mutate(toi = max(game_seconds)) %>%
+          filter(event_type == "SHOT" |
+                 event_type == "GOAL") %>%
+          filter(game_strength_state == "5v5" |
+                 game_strength_state == "5v4" |
+                 game_strength_state == "4v5") %>%
+          mutate(x = abs(coords_x),
+                 y = coords_y,
+                 is_even = 1*(game_strength_state == "5v5"),
+                 is_pp = 1*(game_strength_state == "5v4"),
+                 is_sh = 1*(game_strength_state == "4v5"),
+                 is_goal = 1*(event_type == "GOAL"),
+                 is_even_goal = 1*(event_type == "GOAL" & game_strength_state == "5v5"),
+                 team_type = ifelse(event_team == away_team, "AWAY", "HOME")) %>%
+          group_by(team_type, event_team) %>%
+          summarise(even_shots = sum(is_even),
+                    pp_shots = sum(is_pp),
+                    sh_shots = sum(is_sh),
+                    time = max(toi),
+                    ev_goals = sum(is_even_goal),
+                    goals = sum(is_goal),
+                    even_shots_per_60 = even_shots / (time / 60),
+                    pp_shots_per_60 = pp_shots / (time / 60),
+                    sh_shots_per_60 = sh_shots / (time / 60),
+                    ev_shooting_percentage = ev_goals / even_shots,
+                    save_percentage = (even_shots + pp_shots + sh_shots)/
+                      (even_shots + pp_shots + sh_shots + goals)) %>%
+          dplyr::select(team_type,
+                        event_team,
+                        even_shots_per_60,
+                        pp_shots_per_60,
+                        sh_shots_per_60,
+                        save_percentage) %>%
+          as_tibble(.)
+}
+
+x <- pbp_base %>%
+      group_by(game_id) %>%
+      nest() %>% 
+      mutate(shot_data=map(.f=shot_data_pipeline(.))) %>% 
+      unnest()
+
+```

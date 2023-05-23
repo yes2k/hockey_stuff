@@ -1,0 +1,239 @@
+---
+title: "Collecting Data"
+format: html
+---
+
+
+```{python}
+import hockey_scraper
+
+for year in range(2012, 2022, 1):
+    hockey_scraper.scrape_seasons([year], True, docs_dir="data")
+
+
+```
+
+
+# NHL Data Scraper
+3 possible sources
+
+1. JSON
+    - api docs here: https://gitlab.com/dword4/nhlapi/-/blob/master/swagger/openapi.yaml
+    - what functions to write:
+        - get_game_ids(start_date, end_date)
+        - scrape_game_id(gameid)
+    - game_id is structured as followed
+        - first 4 digits identify season, eg, 2017 for 2017-2018 season
+        - next 2 digits are type of game
+            - 01 = preseason
+            - 02 = regular season
+            - 03 = playoffs
+            - 04 = all-star
+        - The final 4 digits are the game number, for playoff games 2nd digit is round, 3rd digit is matchup and 4 digit is game out of 7
+
+2. HTML 
+    - 
+
+```{python}
+import urllib.request, json, requests
+import pandas as pd
+from bs4 import BeautifulSoup
+import re
+
+# start_date and end_date should be formatted as "yyyy-mm-dd"
+def get_game_ids(start_date, end_date):
+    url = "https://statsapi.web.nhl.com/api/v1/schedule?startDate=" + start_date + "&endDate=" + end_date
+    print(url)
+    
+    data = requests.get(url).json()
+
+    game_id_data = {
+        "game_id": [],
+        "date": [],
+        "home_team": [],
+        "away_team": []
+    }
+
+    for d in data["dates"]:
+        for g in d["games"]:
+            game_id_data["game_id"].append(g["gamePk"])
+            game_id_data["date"].append(d["date"])
+            game_id_data["home_team"].append(g["teams"]["home"]["team"]["name"])
+            game_id_data["away_team"].append(g["teams"]["away"]["team"]["name"])
+
+    return(game_id_data)
+
+
+get_game_ids("2023-01-11", "2023-01-12")
+```
+
+
+
+```{python}
+def scrape_json_pbp(game_id: str):
+    url = "https://statsapi.web.nhl.com/api/v1/game/" + game_id + "/feed/live"
+    print(url)
+
+    data = requests.get(url).json()
+    
+    pbp_data = {
+        "game_id": [],
+        "date": [],
+        "period": [],
+        "event": [],
+        "description": [],
+        "time_elapsed": [],
+        # "strength": [],
+        # "ev_zone": [],
+        "type": [],
+        # "home_zone": [],
+        # "away_zone": [],
+        "away_team": [],
+        "home_team": [],
+        # "away_players": [],
+        # "home_players": [],
+        "away_score": [],
+        "home_score": [],
+        # "away_goalie": [],
+        # "away_goalie_id": [],
+        # "home_goalie": [],
+        # "home_goalie_id": [],
+        "x": [],
+        "y": []
+    }
+
+
+    home_team = data["gameData"]["teams"]["home"]["abbreviation"]
+    away_team = data["gameData"]["teams"]["away"]["abbreviation"]
+    date = data["gameData"]["datetime"]["dateTime"]
+
+    for i in range(1, 4):
+        pbp_data["p" + str(i) + "_name"] = []
+        pbp_data["p" + str(i) + "_id"] = []
+        pbp_data["p" + str(i) + "_type"] = []
+    
+
+    for plays in data["liveData"]["plays"]["allPlays"]:
+        pbp_data["game_id"].append(game_id)
+        pbp_data["date"].append(date)
+
+
+        pbp_data["period"].append(plays["about"]["period"])
+        pbp_data["event"].append(plays["result"]["eventTypeId"])
+        pbp_data["description"].append(plays["result"]["description"])
+        pbp_data["time_elapsed"].append(plays["about"]["periodTime"])
+
+        if("secondaryType" in plays["result"].keys()):
+            pbp_data["type"].append(plays["result"]["secondaryType"])
+        else:
+            pbp_data["type"].append("")
+
+        pbp_data["away_team"].append(away_team)
+        pbp_data["home_team"].append(home_team)
+
+        pbp_data["away_score"].append(plays["about"]["goals"]["away"])
+        pbp_data["home_score"].append(plays["about"]["goals"]["home"])
+
+        if bool(plays["coordinates"]):
+            pbp_data["x"].append(plays["coordinates"]["x"])
+            pbp_data["y"].append(plays["coordinates"]["y"])
+        else:
+            pbp_data["x"].append("")
+            pbp_data["y"].append("")
+        
+
+        if("players" in plays.keys()):
+            for i in range(1, 4):
+                if i <= len(plays["players"]):
+                    pbp_data["p" + str(i) + "_name"].append(plays["players"][i-1]["player"]["fullName"])
+                    pbp_data["p" + str(i) + "_id"].append(plays["players"][i-1]["player"]["id"])
+                    pbp_data["p" + str(i) + "_type"].append(plays["players"][i-1]["playerType"])
+                else:
+                    pbp_data["p" + str(i) + "_name"].append("")
+                    pbp_data["p" + str(i) + "_id"].append("")
+                    pbp_data["p" + str(i) + "_type"].append("")
+        else:
+            for i in range(1, 4):
+                pbp_data["p" + str(i) + "_name"].append("")
+                pbp_data["p" + str(i) + "_id"].append("")
+                pbp_data["p" + str(i) + "_type"].append("")
+    return(pbp_data)
+ 
+
+def scrape_shift_data_json(game_id: str):
+    url = "https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId=" + str(game_id)
+    print(url)
+    data = requests.get(url).json()
+
+    shift_data = {
+        "game_id": [],
+        "start_time": [],
+        "end_time": [],
+        "duration": [],
+        "period": [],
+        "player_id": [],
+        "team_id": [],
+        "shift_number": [],
+        "first_name": [],
+        "last_name": []
+    }
+
+    for shift in data["data"]:
+        shift_data["game_id"].append(game_id)
+        shift_data["start_time"].append(shift["startTime"])
+        shift_data["end_time"].append(shift["endTime"])
+        shift_data["duration"].append(shift["duration"])
+        shift_data["period"].append(shift["period"])
+        shift_data["player_id"].append(shift["playerId"])
+        shift_data["team_id"].append(shift["teamId"])
+        shift_data["shift_number"].append(shift["shiftNumber"])
+        shift_data["first_name"].append(shift["firstName"])
+        shift_data["last_name"].append(shift["lastName"])
+
+    return(shift_data)
+
+
+
+pd.DataFrame.from_dict(scrape_shift_data_json("2022020673"))
+# out = scrape_json_pbp("2022020673")
+# pd.DataFrame.from_dict(out).to_csv("test.csv")
+```
+
+
+```{python}
+def scrape_html_pbp(game_id: str):
+    season = game_id[0:4] + str(int(game_id[0:4]) + 1)
+    url = "https://www.nhl.com/scores/htmlreports/"+ season + "/PL" + game_id[4:] + ".HTM"
+    print(url)
+
+    data = requests.get(url).text
+    soup = BeautifulSoup(data, 'html.parser'
+
+    pbp_data = {
+        "n" = [],
+        "period" = [],
+        "strength" = [],
+        "time_elapsed" = [],
+        "event" = [],
+        "description" = [],
+    }
+
+    for i in range(1, 8):
+        pbp_data["home_p_" + str(i)] = []
+        pbp_data["away_p_" + str(i)] = []
+
+    def finding_rows_with_data(tag):
+        return tag.name == "tr" and tag.has_attr("id")
+
+    for page in soup.find_all(attrs={"class": "page"}):
+        print("============= Page =============")
+        for tr in page.find_all(finding_rows_with_data):
+            print("================ tr =================")
+            
+
+scrape_html_pbp("2022020673")
+
+
+
+"https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId=2022020673"
+```

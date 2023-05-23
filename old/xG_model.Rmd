@@ -1,0 +1,257 @@
+---
+title: "xG_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=T}
+library(tidyverse)
+library(tidyselect)
+library(glmnet)
+library(caret)
+library(reticulate)
+library(xgboost)
+library(RSQLite)
+library(DBI)
+```
+
+Getting the data
+```{r}
+con <- dbConnect(RSQLite::SQLite(), dbname = "hockey_data.db")
+
+pbp_base <- dbGetQuery(conn = con, 'select * 
+                                    from pbp_base
+                                    where game_id > 2014010001;') %>% as_tibble(.)
+game_info <- dbGetQuery(conn = con, 'select * 
+                                    from game_info
+                                    where game_id > 2014010001;') %>% as_tibble(.)
+dbDisconnect(con)
+
+```
+
+Variables needed to make model
+  shot type
+  shooter indicator
+  goalie indicator
+  goal state
+  strength state
+  last event
+
+
+Proccessing data
+```{r}
+# Takes pbp data from the scraper and transforms it
+# to be used by our xG_model
+data_pipeline_xG <- function(pbp){
+  new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL")) %>%
+                  mutate(GF = home_score,
+                         GA = away_score,
+                         num_home_players = str_extract(game_strength_state, "^."),
+                         num_away_players = str_extract(game_strength_state, ".$"),
+                         num_home_players = ifelse(num_home_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"), 
+                                                         num_home_players),
+                         num_away_players = ifelse(num_away_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"),
+                                                          num_away_players),
+                         num_home_players = as.numeric(num_home_players),
+                         num_away_players = as.numeric(num_away_players),
+                         goalie = ifelse(event_team == home_team, home_goalie, away_goalie),
+                         shooter = event_player_1,
+                         y = coords_y,
+                         x = abs(coords_x),
+                         isgoal=ifelse(event_type == "GOAL", 1, 0)) %>%
+                  dplyr::select("GF", "GA", "num_home_players", "num_away_players", 
+                                "event_detail", "x", "y", "shooter", 
+                                "goalie", "event_team", "isgoal", "game_id", "game_seconds") %>%
+                  drop_na()
+  
+  dummy_event_detail <- dummyVars("~event_detail+goalie+shooter+event_team", data=new_pbp, fullRank = TRUE) %>%
+                          predict(., newdata=new_pbp) %>%
+                          data.frame(.)
+
+  new_pbp <- bind_cols(new_pbp %>% dplyr::select("GF", "GA", "num_home_players", 
+                                                 "num_away_players", "x", "y", "isgoal"), 
+                       dummy_event_detail)
+  return(new_pbp)
+}
+test_pbp <- data_pipeline_xG(pbp_base)
+```
+
+Drop players that have less than n shots or have played in less than m games and try and run the model
+or else use normalized values.
+
+```{r}
+X <- test_pbp %>% dplyr::select(-"isgoal") %>% data.matrix(.)
+y <- test_pbp$isgoal
+
+norm_X <- apply(X, 2, function(x){(x-mean(x))/sd(x)})
+
+if(file.exists("xG_model.RDS")){
+  model <- readRDS("xG_model.RDS")
+} else{
+  model <- glmnet(norm_X, y, family="binomial", alpha=0, lambda=0.01)
+  saveRDS(model, file="xG_model.RDS")
+}
+
+model_coef <- coef(model, s="lambda.min")
+model_coef_names <- model_coef@Dimnames[[1]][model_coef@i + 1]
+model_coef <- as_tibble(data.frame(name = model_coef_names, coefficient = model_coef@x))
+```
+
+```{r}
+xG_coeff_denisty_plot <- function(player_names, model_coef){
+  
+  y_plot_coords <- seq(1, 30, by = 30/length(player_names))
+  
+  xG_coff_plot <- model_coef %>% filter(str_detect(name, "shooter")) %>%
+      ggplot(data=., aes(x=coefficient)) + 
+      geom_density()
+  
+  for(i in c(1:length(player_names))){
+      player_coef <- model_coef %>% filter(name == player_names[i]) %>% pull(coefficient)
+      xG_coff_plot <- xG_coff_plot +
+        geom_vline(xintercept = player_coef, col="red") +
+        annotate(geom="text", x=player_coef, y=y_plot_coords[i], label=player_names[i], hjust=-0.01)
+  }
+  return(xG_coff_plot + theme_minimal())
+}
+
+player_name <- c("shooterJOHN.TAVARES",
+                 "shooterALEX.OVECHKIN",
+                 "shooterMITCH.MARNER",
+                 "shooterWILLIAM.NYLANDER",
+                 "shooterCONNOR.MCDAVID",
+                 "shooterJOEL.EDMUNDSON")
+plt <- xG_coeff_denisty_plot(player_name, model_coef)
+plot(plt)
+model_coef %>% filter(str_detect(name, "goalie")) %>% arrange(coefficient)
+```
+
+
+
+
+
+
+
+## xG_Model 2
+An expected goal model that doesn't include player dummy variables
+
+
+```{r}
+# Takes pbp data from the scraper and transforms it
+# to be used by our xG_model
+data_pipeline_xG_v2 <- function(pbp){
+  new_pbp <- pbp %>% filter(event_type %in% c("SHOT", "GOAL", "MISS")) %>%
+                  mutate(GF = home_score,
+                         GA = away_score,
+                         num_home_players = str_extract(game_strength_state, "^."),
+                         num_away_players = str_extract(game_strength_state, ".$"),
+                         num_home_players = ifelse(num_home_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"), 
+                                                         num_home_players),
+                         num_away_players = ifelse(num_away_players == "E", 
+                                                          ifelse(game_seconds < 3600, "5", "3"),
+                                                          num_away_players),
+                         num_home_players = as.numeric(num_home_players),
+                         num_away_players = as.numeric(num_away_players),
+                         goalie = ifelse(event_team == home_team, home_goalie, away_goalie),
+                         shooter = event_player_1,
+                         y = coords_y,
+                         x = abs(coords_x),
+                         shot_distance = sqrt((89-x)^2 + y^2),
+                         shot_angle = atan2(abs(y), abs(89-x)),
+                         seconds_since_last_shot = game_seconds - lag(game_seconds),
+                         is_backhand = 1*(event_detail == "Backhand"),
+                         is_deflected = 1*(event_detail == "Deflected"),
+                         is_slap = 1*(event_detail == "Slap"),
+                         is_snap = 1*(event_detail == "Snap"),
+                         is_tipin = 1*(event_detail == "Tip-In"),
+                         is_wraparound = 1*(event_detail == "Wrap-around"),
+                         is_wrist = 1*(event_detail == "Wrist"),
+                         isgoal=ifelse(event_type == "GOAL", 1, 0)) %>%
+                  dplyr::select("GF", "GA", "num_home_players", "num_away_players", 
+                                "x", "y", "isgoal", "game_id", "game_seconds",
+                                "shooter", "goalie", "shot_distance",
+                                "shot_angle", "seconds_since_last_shot",
+                                "event_team", "is_backhand", "is_slap",
+                                "is_snap", "is_tipin", "is_wraparound", 
+                                "is_wrist") %>% drop_na()
+  return(new_pbp)   
+}
+shot_data <- data_pipeline_xG_v2(pbp_base)
+```
+
+```{r}
+n_split <- round(nrow(shot_data) * 0.8)
+train  <- shot_data %>% dplyr::slice(1:n_split)
+test <- shot_data %>% dplyr::slice(n_split:n())
+log_model <-
+  glm(isgoal ~ .,
+      data = train %>% dplyr::select(-c(
+        "game_id", "shooter",
+        "goalie", "event_team"
+      )),
+      family = "binomial")
+
+preds <-
+  predict(log_model,
+          newdata = test %>% dplyr::select(-c(
+            "game_id", "shooter",
+            "goalie", "event_team"
+          )),
+          type = "response") %>%
+  cbind(xG = .,
+        test %>% dplyr::select("game_id", "shooter", "goalie",
+                               "isgoal", "event_team")) %>% as_tibble(.)
+test_model <-
+  preds %>% group_by(shooter) %>% summarise(goals = sum(isgoal), total_xG =
+                                              sum(xG))
+ggplot(test_model, aes(x = goals, y = total_xG)) + geom_point()
+```
+
+```{r}
+# TODO: Adding score text
+
+# Takes some pbp_data (dataframe), an xG_model, xG_pipeline(function)
+# and game_info(dataframe) and returns a graph that show the cumulative 
+# xG from both teams
+xG_graph <- function(pbp_data, xG_model, xG_pipeline, game_info) {
+  shot_data <- xG_pipeline(pbp_data)
+  preds <- predict(xG_model, newdata = shot_data, type = "response")
+  xG_data <- cbind(xG = preds, shot_data) %>% as_tibble(.)
+  plot_data <- xG_data %>% 
+    dplyr::select("xG", "game_seconds", "event_team") %>% 
+    mutate(row = row_number()) %>%
+    pivot_wider(names_from = event_team, values_from = xG) %>%
+    replace(is.na(.), 0) %>% dplyr::select(-row)
+  
+  home_team <- game_info$home_team
+  away_team <- game_info$away_team
+  plot_data[home_team] <- cumsum(plot_data[home_team])
+  plot_data[away_team] <- cumsum(plot_data[away_team])
+  plot_data <- plot_data %>% pivot_longer(cols=-c(game_seconds), values_to="Cumulative xG")
+  
+  return(ggplot(data = plot_data, aes(x=game_seconds, y=xG, col=name)) +
+           geom_line() + 
+           ggtitle(paste("xG graph ", game_info$away_team, " @ ", 
+                  game_info$home_team, ", ", game_info$game_date %>% 
+                  as.Date.numeric(., origin = "1970-01-01"), sep="")) + 
+           geom_hline(yintercept = game_info$home_score, mapping=mapping = ) +
+           geom_hline(yintercept = game_info$away_score) + 
+           theme(plot.title = element_text(hjust = 0.5)))
+}
+
+gid <- "2016020105"
+graph <- xG_graph(pbp_base %>% filter(game_id == gid),
+                  log_model,
+                  data_pipeline_xG_v2,
+                  game_info %>% filter(game_id == gid)
+                  )
+
+plot(graph)
+```
+

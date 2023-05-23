@@ -3,36 +3,201 @@ title: "win prob"
 format: html
 ---
 
-```{r}
+```{r message=FALSE}
 library(tidyverse)
+library(cmdstanr)
+library(posterior)
+library(bayesplot)
+```
+
+# Loading data
+
+```{r loading_data, message=FALSE}
+pbp <- read_csv("../data_loading_scripts/data/csvs/nhl_pbp_20202021.csv")
+shifts <- read_csv("../data_loading_scripts/data/csvs/nhl_shifts_20202021.csv")
+```
+
+
+# Model 1
+- Modelling the home and away goals/60 as a Pois(\lambda) distribution
+
+$$
+X_1, ..., X_N \thicksim \text{Pois}(\lambda), \ \ \ \lambda \thicksim \text{Gamma}(2, 1)
+$$
+- The $X_i$'s are the number of goals score in game $i$
+- Will have one model for home and one model for away. 
+- Need to do a prior predictive check
+- Score more than 5,6,7 goals is uncommon 
+
+
+
+```{r}
+# Groupby gameid and select the last row to get the final score
+score_data <- pbp |> group_by(Game_Id) |> filter(row_number()==n()) |> 
+  select(Away_Score, Home_Score) |> ungroup()
+
+model_1 <- cmdstan_model("model1/model1.stan", compile = TRUE)
+data_list <- list(
+  N = nrow(score_data),
+  score = score_data$Home_Score,
+  alpha = 2, 
+  beta = 1,
+  only_prior = 0
+)
+```
+
+## Home Model
+
+```{r}
+data_list$only_prior = 1
+data_list$score <- score_data$Home_Score
+model_1_prior_predictive_check <- model_1$sample(
+  data = data_list,
+  seed = 1001,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 0
+)
+
+# Plotting the prior
+mcmc_hist(model_1_prior_predictive_check$draws("lambda"))
+
+# Plotting the prior predictive distribution
+mcmc_hist(model_1_prior_predictive_check$draws(c("score_pred[1]", "score_pred[546]", 
+                                                 "score_pred[56]", "score_pred[289]")))
+
 ```
 
 ```{r}
-d1 <- read_csv("points_2018_2019.csv")
-d2 <- read_csv("points_2019_2020.csv")
-d3 <- read_csv("points_2020_2021.csv")
-d4 <- read_csv("points_2021_2022.csv")
+# Fitting the model with for home
+data_list$only_prior = 0
+data_list$score <- score_data$Home_Score
+model_1_fit_home <- model_1$sample(
+  data = data_list,
+  seed = 1001,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 0
+)
+```
+
+```{r}
+# Summary
+model_1_fit_home$summary()[1:2, ]
 
 
-d1$season <- "2018_2019"
-d2$season <- "2019_2020"
-d3$season <- "2020_2021"
-d4$season <- "2021_2022"
-
-dat <- bind_rows(d1 |> arrange("Team"), 
-                 d2 |> arrange("Team"),
-                 d3 |> arrange("Team"),
-                 d4 |> arrange("Team")) |> 
-  select("Team", "Points", "season")
+# Plotting the posterior distribution for lambda
+mcmc_hist(model_1_fit_home$draws("lambda"))
 
 
-dat |> pivot_wider(names_from = season, values_from = Points)
+# Posterior Predictive
+yrep <- model_1_fit_home$draws() |> reshape2::melt() |>
+  filter(str_detect(variable, "score_pred")) |> 
+  extract(col = variable, into = "ind", regex = "score_pred\\[([0-9]*)\\]",
+          convert = TRUE) |> 
+  pivot_wider(id_cols = c("chain","iteration"), names_from = "ind") |> 
+  select(-c("chain", "iteration")) |> as.matrix()
+
+ppc_bars(data_list$score, yrep)
+ppc_rootogram(data_list$score, yrep)
+
+prop_zero <- \(x) mean(x == 0)
+ppc_stat(data_list$score, yrep, stat = "prop_zero")
+ppc_stat(data_list$score, yrep, stat = "max")
+```
+
+## Away Model
+
+```{r}
+data_list$only_prior <-  1
+data_list$score <- score_data$Away_Score
+model_1_prior_predictive_check <- model_1$sample(
+  data = data_list,
+  seed = 1001,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 0
+)
+
+# Plotting the prior
+mcmc_hist(model_1_prior_predictive_check$draws("lambda"))
+
+# Plotting the prior predictive distribution
+mcmc_hist(model_1_prior_predictive_check$draws(c("score_pred[1]", "score_pred[546]", 
+                                                 "score_pred[56]", "score_pred[289]")))
+
+```
+
+```{r}
+# Fitting the model with for home
+data_list$only_prior = 0
+model_1_fit_away <- model_1$sample(
+  data = data_list,
+  seed = 1001,
+  chains = 4,
+  parallel_chains = 4,
+  refresh = 0
+)
+```
+
+```{r}
+# Summary
+model_1_fit_away$summary()[1:2, ]
+
+
+
+# Plotting the posterior distribution for lambda
+mcmc_hist(model_1_fit_away$draws("lambda"))
+
+
+# Posterior Predictive
+yrep <- model_1_fit_away$draws() |> reshape2::melt() |>
+  filter(str_detect(variable, "score_pred")) |> 
+  extract(col = variable, into = "ind", regex = "score_pred\\[([0-9]*)\\]",
+          convert = TRUE) |> 
+  pivot_wider(id_cols = c("chain","iteration"), names_from = "ind") |> 
+  select(-c("chain", "iteration")) |> as.matrix()
+
+ppc_bars(data_list$score, yrep)
+ppc_rootogram(data_list$score, yrep)
+
+prop_zero <- \(x) mean(x == 0)
+ppc_stat(data_list$score, yrep, stat = "prop_zero")
+ppc_stat(data_list$score, yrep, stat = "max")
 ```
 
 
 
 
+- The posterior predictive distribution doesn't fit well with 0 goals and 3 goals
+- Test statistic plot for prop-zero not very good, maybe need negative-binomial distribution
 
+
+# Model 2
+- Modelling individual team goals/60 as a hierarchical Pois(\lambda) distribution
+  - Maybe add a fixed effect that represent whether they are home or away team
+  - Do this model for each year and updated after each game
+  - somehow add team interaction terms
+
+# Model 3
+- Model 2 but somehow include player variables
+
+# Model 4
+- Model 1, 2 and 3 but with xG/60
+
+# Model 5
+- Logistic regression or xgboost model with the following variables
+  - 5v5 xG
+  - pp xGF/60
+  - pk xGA/60
+  - Shots for %
+  - save % (or expected save %)
+- One observation per game
+- create an away and home model (maybe try and include team variables?)
+https://moneypuck.com/about.htm
+
+# Model 6
+- Use Elo
 
 
 

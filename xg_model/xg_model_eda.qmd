@@ -1,0 +1,31 @@
+---
+title: "xg_model_eda"
+format: html
+editor: visual
+---
+
+# Library
+
+```{r message = FALSE}
+library(tidyverse)
+library(data.table)
+```
+
+# Loading in all the data
+
+```{r}
+dat <- fread("../data_loading_scripts/data/csvs/nhl_pbp_20202021.csv")
+```
+
+# Cleaning data
+
+```{r}
+dat$Event |> table()
+dat |> filter(Event %in% c("BLOCK", "GOAL", "MISS", "SHOT")) |>
+  mutate(is_home_team = ifelse(Home_Team == Ev_Team, 1, 0),
+         x = abs(x),
+         y = yC,
+         is_goal = ifelse(Event == "GOAL", 1, 0)) |>
+  select(x, y, is_goal, Description, strength, is_home_team)
+```
+
